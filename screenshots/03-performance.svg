@@ -1,0 +1,210 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 1180" text-rendering="geometricPrecision" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif">
+<rect width="1100" height="1180" fill="#0D0F0E"/>
+<rect x="32" y="34" width="36" height="36" rx="10" fill="#78CF87"/>
+<g transform="translate(41,43) scale(0.7500)" fill="none" stroke="#10120F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+<rect width="20" height="8" x="2" y="2" rx="2"/><rect width="20" height="8" x="2" y="14" rx="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/>
+</g>
+<text x="80" y="49" fill="#F4F6F4" font-family="Montserrat, Manrope, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="15" font-weight="700">GH Cloud</text>
+<text x="80" y="69" fill="#717872" font-size="10.5">91.198.*.* · NL/Amsterdam · 2026-10-05 23:26</text>
+<text x="1068" y="50" text-anchor="end" fill="#A9B0AA" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="12">3 / 4</text>
+<text x="32" y="124" fill="#F4F6F4" font-family="Montserrat, Manrope, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="30" font-weight="700" letter-spacing="-1">Скорость и производительность</text>
+<text x="32" y="152" fill="#A9B0AA" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="13">Пропускная способность, диски и вычислительные тесты</text>
+<line x1="32" y1="176" x2="1068" y2="176" stroke="#272D29" stroke-width="1"/>
+<rect x="32" y="202" width="1036" height="190" rx="14" fill="#151816" stroke="#272D29" stroke-width="1"/>
+<g transform="translate(62,220) scale(0.7500)" fill="none" stroke="#78CF87" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+<path d="m12 14 4-4M3.34 19a10 10 0 1 1 17.32 0"/>
+</g>
+<text x="92" y="236" fill="#F4F6F4" font-family="Montserrat, Manrope, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="19" font-weight="700" letter-spacing="-0.4">iPerf3 - тест до российских серверов</text>
+<g transform="translate(1020,223) scale(0.6667)" fill="none" stroke="#78CF87" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>
+</g>
+<line x1="62" y1="254" x2="1038" y2="254" stroke="#272D29" stroke-width="1"/>
+<rect x="62" y="268" width="193" height="30" rx="15" fill="#19271C"/>
+<line x1="171" y1="274" x2="171" y2="292" stroke="#29472E" stroke-width="1"/>
+<text x="116" y="287" text-anchor="middle" fill="#A9B0AA" font-size="11">Макс загрузка</text>
+<text x="213" y="287" text-anchor="middle" fill="#78CF87" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="12" font-weight="600">914 Mbps</text>
+<rect x="263" y="268" width="179" height="30" rx="15" fill="#19271C"/>
+<line x1="358" y1="274" x2="358" y2="292" stroke="#29472E" stroke-width="1"/>
+<text x="310" y="287" text-anchor="middle" fill="#A9B0AA" font-size="11">Макс отдача</text>
+<text x="400" y="287" text-anchor="middle" fill="#78CF87" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="12" font-weight="600">887 Mbps</text>
+<rect x="450" y="268" width="144" height="30" rx="15" fill="#19271C"/>
+<line x1="532" y1="274" x2="532" y2="292" stroke="#29472E" stroke-width="1"/>
+<text x="491" y="287" text-anchor="middle" fill="#A9B0AA" font-size="11">Мин. ping</text>
+<text x="563" y="287" text-anchor="middle" fill="#78CF87" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="12" font-weight="600">38 ms</text>
+<rect x="602" y="268" width="106" height="30" rx="15" fill="#1B201C"/>
+<line x1="677" y1="274" x2="677" y2="292" stroke="#343C36" stroke-width="1"/>
+<text x="639" y="287" text-anchor="middle" fill="#A9B0AA" font-size="11">Серверов</text>
+<text x="692" y="287" text-anchor="middle" fill="#F4F6F4" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="12" font-weight="600">4</text>
+<text x="62" y="325" fill="#F4F6F4" font-size="13">Москва</text>
+<text x="534" y="327" text-anchor="end" fill="#A9B0AA" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="11.5" font-weight="500">914 Mb/s</text>
+<rect x="62" y="332" width="472" height="4" rx="2" fill="#242925"/>
+<rect x="62" y="332" width="448" height="4" rx="2" fill="#78CF87"/>
+<text x="566" y="325" fill="#F4F6F4" font-size="13">Санкт-Петербург</text>
+<text x="1038" y="327" text-anchor="end" fill="#A9B0AA" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="11.5" font-weight="500">876 Mb/s</text>
+<rect x="566" y="332" width="472" height="4" rx="2" fill="#242925"/>
+<rect x="566" y="332" width="429" height="4" rx="2" fill="#78CF87"/>
+<text x="62" y="357" fill="#F4F6F4" font-size="13">Екатеринбург</text>
+<text x="534" y="359" text-anchor="end" fill="#A9B0AA" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="11.5" font-weight="500">721 Mb/s</text>
+<rect x="62" y="364" width="472" height="4" rx="2" fill="#242925"/>
+<rect x="62" y="364" width="354" height="4" rx="2" fill="#78CF87"/>
+<text x="566" y="357" fill="#F4F6F4" font-size="13">Новосибирск</text>
+<text x="1038" y="359" text-anchor="end" fill="#A9B0AA" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="11.5" font-weight="500">603 Mb/s</text>
+<rect x="566" y="364" width="472" height="4" rx="2" fill="#242925"/>
+<rect x="566" y="364" width="297" height="4" rx="2" fill="#78CF87"/>
+<rect x="32" y="410" width="1036" height="158" rx="14" fill="#151816" stroke="#272D29" stroke-width="1"/>
+<g transform="translate(62,428) scale(0.7500)" fill="none" stroke="#78CF87" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+<path d="m12 14 4-4M3.34 19a10 10 0 1 1 17.32 0"/>
+</g>
+<text x="92" y="444" fill="#F4F6F4" font-family="Montserrat, Manrope, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="19" font-weight="700" letter-spacing="-0.4">iPerf3 - bench.tlab.pw (РФ)</text>
+<g transform="translate(1020,431) scale(0.6667)" fill="none" stroke="#78CF87" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>
+</g>
+<line x1="62" y1="462" x2="1038" y2="462" stroke="#272D29" stroke-width="1"/>
+<rect x="62" y="476" width="159" height="30" rx="15" fill="#19271C"/>
+<line x1="137" y1="482" x2="137" y2="500" stroke="#29472E" stroke-width="1"/>
+<text x="99" y="495" text-anchor="middle" fill="#A9B0AA" font-size="11">Загрузка</text>
+<text x="179" y="495" text-anchor="middle" fill="#78CF87" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="12" font-weight="600">901 Mbps</text>
+<rect x="229" y="476" width="146" height="30" rx="15" fill="#19271C"/>
+<line x1="291" y1="482" x2="291" y2="500" stroke="#29472E" stroke-width="1"/>
+<text x="260" y="495" text-anchor="middle" fill="#A9B0AA" font-size="11">Отдача</text>
+<text x="333" y="495" text-anchor="middle" fill="#78CF87" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="12" font-weight="600">872 Mbps</text>
+<rect x="383" y="476" width="110" height="30" rx="15" fill="#19271C"/>
+<line x1="431" y1="482" x2="431" y2="500" stroke="#29472E" stroke-width="1"/>
+<text x="407" y="495" text-anchor="middle" fill="#A9B0AA" font-size="11">Ping</text>
+<text x="462" y="495" text-anchor="middle" fill="#78CF87" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="12" font-weight="600">42 ms</text>
+<rect x="501" y="476" width="99" height="30" rx="15" fill="#1B201C"/>
+<line x1="569" y1="482" x2="569" y2="500" stroke="#343C36" stroke-width="1"/>
+<text x="535" y="495" text-anchor="middle" fill="#A9B0AA" font-size="11">Потоков</text>
+<text x="584" y="495" text-anchor="middle" fill="#F4F6F4" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="12" font-weight="600">8</text>
+<text x="62" y="533" fill="#F4F6F4" font-size="13">bench.tlab.pw download</text>
+<text x="534" y="535" text-anchor="end" fill="#A9B0AA" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="11.5" font-weight="500">901 Mb/s</text>
+<rect x="62" y="540" width="472" height="4" rx="2" fill="#242925"/>
+<rect x="62" y="540" width="443" height="4" rx="2" fill="#78CF87"/>
+<text x="566" y="533" fill="#F4F6F4" font-size="13">bench.tlab.pw upload</text>
+<text x="1038" y="535" text-anchor="end" fill="#A9B0AA" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="11.5" font-weight="500">872 Mb/s</text>
+<rect x="566" y="540" width="472" height="4" rx="2" fill="#242925"/>
+<rect x="566" y="540" width="429" height="4" rx="2" fill="#78CF87"/>
+<rect x="32" y="586" width="1036" height="190" rx="14" fill="#151816" stroke="#272D29" stroke-width="1"/>
+<g transform="translate(62,604) scale(0.7500)" fill="none" stroke="#78CF87" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+<path d="m12 14 4-4M3.34 19a10 10 0 1 1 17.32 0"/>
+</g>
+<text x="92" y="620" fill="#F4F6F4" font-family="Montserrat, Manrope, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="19" font-weight="700" letter-spacing="-0.4">YABS - бенчмарк сервера</text>
+<g transform="translate(1020,607) scale(0.6667)" fill="none" stroke="#78CF87" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>
+</g>
+<line x1="62" y1="638" x2="1038" y2="638" stroke="#272D29" stroke-width="1"/>
+<rect x="62" y="652" width="195" height="30" rx="15" fill="#1B201C"/>
+<line x1="104" y1="658" x2="104" y2="676" stroke="#343C36" stroke-width="1"/>
+<text x="83" y="671" text-anchor="middle" fill="#A9B0AA" font-size="11">CPU</text>
+<text x="180" y="671" text-anchor="middle" fill="#F4F6F4" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="12" font-weight="600">AMD Ryzen 9 3900X</text>
+<rect x="265" y="652" width="79" height="30" rx="15" fill="#1B201C"/>
+<line x1="313" y1="658" x2="313" y2="676" stroke="#343C36" stroke-width="1"/>
+<text x="289" y="671" text-anchor="middle" fill="#A9B0AA" font-size="11">Ядер</text>
+<text x="328" y="671" text-anchor="middle" fill="#F4F6F4" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="12" font-weight="600">3</text>
+<rect x="352" y="652" width="119" height="30" rx="15" fill="#1B201C"/>
+<line x1="394" y1="658" x2="394" y2="676" stroke="#343C36" stroke-width="1"/>
+<text x="373" y="671" text-anchor="middle" fill="#A9B0AA" font-size="11">RAM</text>
+<text x="432" y="671" text-anchor="middle" fill="#F4F6F4" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="12" font-weight="600">7.8 GiB</text>
+<rect x="479" y="652" width="132" height="30" rx="15" fill="#1B201C"/>
+<line x1="527" y1="658" x2="527" y2="676" stroke="#343C36" stroke-width="1"/>
+<text x="503" y="671" text-anchor="middle" fill="#A9B0AA" font-size="11">Диск</text>
+<text x="569" y="671" text-anchor="middle" fill="#F4F6F4" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="12" font-weight="600">98.3 GiB</text>
+<rect x="619" y="652" width="169" height="30" rx="15" fill="#19271C"/>
+<line x1="681" y1="658" x2="681" y2="676" stroke="#29472E" stroke-width="1"/>
+<text x="650" y="671" text-anchor="middle" fill="#A9B0AA" font-size="11">fio 4k</text>
+<text x="734" y="671" text-anchor="middle" fill="#78CF87" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="12" font-weight="600">606.46 MB/s</text>
+<rect x="796" y="652" width="154" height="30" rx="15" fill="#19271C"/>
+<line x1="858" y1="658" x2="858" y2="676" stroke="#29472E" stroke-width="1"/>
+<text x="827" y="671" text-anchor="middle" fill="#A9B0AA" font-size="11">fio 1m</text>
+<text x="904" y="671" text-anchor="middle" fill="#78CF87" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="12" font-weight="600">5.49 GB/s</text>
+<text x="62" y="709" fill="#F4F6F4" font-size="13">Clouvider London, UK</text>
+<text x="534" y="711" text-anchor="end" fill="#A9B0AA" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="11.5" font-weight="500">879Mb</text>
+<rect x="62" y="716" width="472" height="4" rx="2" fill="#242925"/>
+<rect x="62" y="716" width="434" height="4" rx="2" fill="#78CF87"/>
+<text x="566" y="709" fill="#F4F6F4" font-size="13">Eranium Amsterdam, NL</text>
+<text x="1038" y="711" text-anchor="end" fill="#A9B0AA" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="11.5" font-weight="500">881Mb</text>
+<rect x="566" y="716" width="472" height="4" rx="2" fill="#242925"/>
+<rect x="566" y="716" width="448" height="4" rx="2" fill="#78CF87"/>
+<text x="62" y="741" fill="#F4F6F4" font-size="13">Leaseweb Singapore, SG</text>
+<text x="534" y="743" text-anchor="end" fill="#A9B0AA" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="11.5" font-weight="500">660Mb</text>
+<rect x="62" y="748" width="472" height="4" rx="2" fill="#242925"/>
+<rect x="62" y="748" width="330" height="4" rx="2" fill="#78CF87"/>
+<text x="566" y="741" fill="#F4F6F4" font-size="13">Leaseweb NYC, US</text>
+<text x="1038" y="743" text-anchor="end" fill="#A9B0AA" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="11.5" font-weight="500">785Mb</text>
+<rect x="566" y="748" width="472" height="4" rx="2" fill="#242925"/>
+<rect x="566" y="748" width="396" height="4" rx="2" fill="#78CF87"/>
+<rect x="32" y="794" width="1036" height="190" rx="14" fill="#151816" stroke="#272D29" stroke-width="1"/>
+<g transform="translate(62,812) scale(0.7500)" fill="none" stroke="#78CF87" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+<path d="m12 14 4-4M3.34 19a10 10 0 1 1 17.32 0"/>
+</g>
+<text x="92" y="828" fill="#F4F6F4" font-family="Montserrat, Manrope, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="19" font-weight="700" letter-spacing="-0.4">bench.sh - параметры сервера и скорость</text>
+<g transform="translate(1020,815) scale(0.6667)" fill="none" stroke="#78CF87" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>
+</g>
+<line x1="62" y1="846" x2="1038" y2="846" stroke="#272D29" stroke-width="1"/>
+<rect x="62" y="860" width="195" height="30" rx="15" fill="#1B201C"/>
+<line x1="104" y1="866" x2="104" y2="884" stroke="#343C36" stroke-width="1"/>
+<text x="83" y="879" text-anchor="middle" fill="#A9B0AA" font-size="11">CPU</text>
+<text x="180" y="879" text-anchor="middle" fill="#F4F6F4" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="12" font-weight="600">AMD Ryzen 9 3900X</text>
+<rect x="265" y="860" width="79" height="30" rx="15" fill="#1B201C"/>
+<line x1="313" y1="866" x2="313" y2="884" stroke="#343C36" stroke-width="1"/>
+<text x="289" y="879" text-anchor="middle" fill="#A9B0AA" font-size="11">Ядер</text>
+<text x="328" y="879" text-anchor="middle" fill="#F4F6F4" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="12" font-weight="600">3</text>
+<rect x="352" y="860" width="119" height="30" rx="15" fill="#1B201C"/>
+<line x1="394" y1="866" x2="394" y2="884" stroke="#343C36" stroke-width="1"/>
+<text x="373" y="879" text-anchor="middle" fill="#A9B0AA" font-size="11">RAM</text>
+<text x="432" y="879" text-anchor="middle" fill="#F4F6F4" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="12" font-weight="600">7.8 GiB</text>
+<rect x="479" y="860" width="132" height="30" rx="15" fill="#1B201C"/>
+<line x1="527" y1="866" x2="527" y2="884" stroke="#343C36" stroke-width="1"/>
+<text x="503" y="879" text-anchor="middle" fill="#A9B0AA" font-size="11">Диск</text>
+<text x="569" y="879" text-anchor="middle" fill="#F4F6F4" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="12" font-weight="600">98.3 GiB</text>
+<rect x="619" y="860" width="166" height="30" rx="15" fill="#19271C"/>
+<line x1="701" y1="866" x2="701" y2="884" stroke="#29472E" stroke-width="1"/>
+<text x="660" y="879" text-anchor="middle" fill="#A9B0AA" font-size="11">I/O сред.</text>
+<text x="743" y="879" text-anchor="middle" fill="#78CF87" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="12" font-weight="600">742 MB/s</text>
+<rect x="793" y="860" width="97" height="30" rx="15" fill="#1B201C"/>
+<line x1="828" y1="866" x2="828" y2="884" stroke="#343C36" stroke-width="1"/>
+<text x="810" y="879" text-anchor="middle" fill="#A9B0AA" font-size="11">CC</text>
+<text x="859" y="879" text-anchor="middle" fill="#F4F6F4" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="12" font-weight="600">cubic</text>
+<text x="62" y="917" fill="#F4F6F4" font-size="13">Speedtest Amsterdam</text>
+<text x="534" y="919" text-anchor="end" fill="#A9B0AA" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="11.5" font-weight="500">936 Mb/s</text>
+<rect x="62" y="924" width="472" height="4" rx="2" fill="#242925"/>
+<rect x="62" y="924" width="457" height="4" rx="2" fill="#78CF87"/>
+<text x="566" y="917" fill="#F4F6F4" font-size="13">Speedtest London</text>
+<text x="1038" y="919" text-anchor="end" fill="#A9B0AA" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="11.5" font-weight="500">889 Mb/s</text>
+<rect x="566" y="924" width="472" height="4" rx="2" fill="#242925"/>
+<rect x="566" y="924" width="434" height="4" rx="2" fill="#78CF87"/>
+<text x="62" y="949" fill="#F4F6F4" font-size="13">Speedtest New York</text>
+<text x="534" y="951" text-anchor="end" fill="#A9B0AA" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="11.5" font-weight="500">702 Mb/s</text>
+<rect x="62" y="956" width="472" height="4" rx="2" fill="#242925"/>
+<rect x="62" y="956" width="344" height="4" rx="2" fill="#78CF87"/>
+<rect x="32" y="1002" width="1036" height="126" rx="14" fill="#151816" stroke="#272D29" stroke-width="1"/>
+<g transform="translate(62,1020) scale(0.7500)" fill="none" stroke="#78CF87" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+<path d="m12 14 4-4M3.34 19a10 10 0 1 1 17.32 0"/>
+</g>
+<text x="92" y="1036" fill="#F4F6F4" font-family="Montserrat, Manrope, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="19" font-weight="700" letter-spacing="-0.4">sysbench CPU - тест процессора</text>
+<g transform="translate(1020,1023) scale(0.6667)" fill="none" stroke="#78CF87" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>
+</g>
+<line x1="62" y1="1054" x2="1038" y2="1054" stroke="#272D29" stroke-width="1"/>
+<rect x="62" y="1068" width="152" height="30" rx="15" fill="#19271C"/>
+<line x1="137" y1="1074" x2="137" y2="1092" stroke="#29472E" stroke-width="1"/>
+<text x="99" y="1087" text-anchor="middle" fill="#A9B0AA" font-size="11">events/s</text>
+<text x="175" y="1087" text-anchor="middle" fill="#78CF87" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="12" font-weight="600">1854.22</text>
+<rect x="222" y="1068" width="130" height="30" rx="15" fill="#1B201C"/>
+<line x1="290" y1="1074" x2="290" y2="1092" stroke="#343C36" stroke-width="1"/>
+<text x="256" y="1087" text-anchor="middle" fill="#A9B0AA" font-size="11">событий</text>
+<text x="321" y="1087" text-anchor="middle" fill="#F4F6F4" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="12" font-weight="600">18549</text>
+<rect x="360" y="1068" width="132" height="30" rx="15" fill="#1B201C"/>
+<line x1="415" y1="1074" x2="415" y2="1092" stroke="#343C36" stroke-width="1"/>
+<text x="387" y="1087" text-anchor="middle" fill="#A9B0AA" font-size="11">время</text>
+<text x="453" y="1087" text-anchor="middle" fill="#F4F6F4" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="12" font-weight="600">10.00 s</text>
+<rect x="500" y="1068" width="145" height="30" rx="15" fill="#19271C"/>
+<line x1="568" y1="1074" x2="568" y2="1092" stroke="#29472E" stroke-width="1"/>
+<text x="534" y="1087" text-anchor="middle" fill="#A9B0AA" font-size="11">lat avg</text>
+<text x="606" y="1087" text-anchor="middle" fill="#78CF87" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="12" font-weight="600">0.54 ms</text>
+<rect x="653" y="1068" width="152" height="30" rx="15" fill="#19271C"/>
+<line x1="728" y1="1074" x2="728" y2="1092" stroke="#29472E" stroke-width="1"/>
+<text x="690" y="1087" text-anchor="middle" fill="#A9B0AA" font-size="11">lat 95th</text>
+<text x="766" y="1087" text-anchor="middle" fill="#78CF87" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="12" font-weight="600">0.61 ms</text>
+</svg>

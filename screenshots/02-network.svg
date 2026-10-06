@@ -1,0 +1,173 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 1242" text-rendering="geometricPrecision" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif">
+<rect width="1100" height="1242" fill="#0D0F0E"/>
+<rect x="32" y="34" width="36" height="36" rx="10" fill="#78CF87"/>
+<g transform="translate(41,43) scale(0.7500)" fill="none" stroke="#10120F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+<rect width="20" height="8" x="2" y="2" rx="2"/><rect width="20" height="8" x="2" y="14" rx="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/>
+</g>
+<text x="80" y="49" fill="#F4F6F4" font-family="Montserrat, Manrope, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="15" font-weight="700">GH Cloud</text>
+<text x="80" y="69" fill="#717872" font-size="10.5">91.198.*.* · NL/Amsterdam · 2026-10-05 23:26</text>
+<text x="1068" y="50" text-anchor="end" fill="#A9B0AA" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="12">2 / 4</text>
+<text x="32" y="124" fill="#F4F6F4" font-family="Montserrat, Manrope, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="30" font-weight="700" letter-spacing="-1">Сеть и доступность</text>
+<text x="32" y="152" fill="#A9B0AA" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="13">Геолокация, маршруты, DPI и доступность сети</text>
+<line x1="32" y1="176" x2="1068" y2="176" stroke="#272D29" stroke-width="1"/>
+<rect x="32" y="202" width="1036" height="228" rx="14" fill="#151816" stroke="#272D29" stroke-width="1"/>
+<g transform="translate(62,220) scale(0.7500)" fill="none" stroke="#78CF87" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+<path d="m12 14 4-4M3.34 19a10 10 0 1 1 17.32 0"/>
+</g>
+<text x="92" y="236" fill="#F4F6F4" font-family="Montserrat, Manrope, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="19" font-weight="700" letter-spacing="-0.4">IP Region</text>
+<g transform="translate(1020,223) scale(0.6667)" fill="none" stroke="#78CF87" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>
+</g>
+<line x1="62" y1="254" x2="1038" y2="254" stroke="#272D29" stroke-width="1"/>
+<rect x="62" y="268" width="188" height="30" rx="15" fill="#19271C"/>
+<line x1="124" y1="274" x2="124" y2="292" stroke="#29472E" stroke-width="1"/>
+<text x="93" y="287" text-anchor="middle" fill="#A9B0AA" font-size="11">Страна</text>
+<image x="134" y="275" width="16" height="16" href="data:image/png;base64,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"/>
+<text x="200" y="287" text-anchor="middle" fill="#78CF87" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="12" font-weight="600">Нидерланды</text>
+<rect x="258" y="268" width="147" height="30" rx="15" fill="#1B201C"/>
+<line x1="313" y1="274" x2="313" y2="292" stroke="#343C36" stroke-width="1"/>
+<text x="285" y="287" text-anchor="middle" fill="#A9B0AA" font-size="11">Город</text>
+<text x="359" y="287" text-anchor="middle" fill="#F4F6F4" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="12" font-weight="600">Amsterdam</text>
+<rect x="413" y="268" width="126" height="30" rx="15" fill="#19271C"/>
+<line x1="455" y1="274" x2="455" y2="292" stroke="#29472E" stroke-width="1"/>
+<text x="434" y="287" text-anchor="middle" fill="#A9B0AA" font-size="11">ASN</text>
+<text x="497" y="287" text-anchor="middle" fill="#78CF87" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="12" font-weight="600">AS207994</text>
+<rect x="547" y="268" width="265" height="30" rx="15" fill="#1B201C"/>
+<line x1="629" y1="274" x2="629" y2="292" stroke="#343C36" stroke-width="1"/>
+<text x="588" y="287" text-anchor="middle" fill="#A9B0AA" font-size="11">Провайдер</text>
+<text x="720" y="287" text-anchor="middle" fill="#F4F6F4" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="12" font-weight="600">Blockchain Creek B.V.</text>
+<rect x="62" y="306" width="238" height="30" rx="15" fill="#19271C"/>
+<line x1="144" y1="312" x2="144" y2="330" stroke="#29472E" stroke-width="1"/>
+<text x="103" y="325" text-anchor="middle" fill="#A9B0AA" font-size="11">Консенсус</text>
+<image x="154" y="313" width="16" height="16" href="data:image/png;base64,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"/>
+<text x="235" y="325" text-anchor="middle" fill="#78CF87" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="12" font-weight="600">NL / Amsterdam</text>
+<text x="88" y="370" fill="#F4F6F4" font-size="13.5">MaxMind</text>
+<text x="534" y="370" text-anchor="end" fill="#78CF87" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="11.5">NL</text>
+<text x="592" y="370" fill="#F4F6F4" font-size="13.5">IPinfo</text>
+<text x="1038" y="370" text-anchor="end" fill="#78CF87" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="11.5">NL</text>
+<text x="88" y="402" fill="#F4F6F4" font-size="13.5">DB-IP</text>
+<text x="534" y="402" text-anchor="end" fill="#78CF87" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="11.5">NL</text>
+<text x="592" y="402" fill="#F4F6F4" font-size="13.5">IP2Location</text>
+<text x="1038" y="402" text-anchor="end" fill="#78CF87" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="11.5">NL</text>
+<rect x="32" y="448" width="1036" height="326" rx="14" fill="#151816" stroke="#272D29" stroke-width="1"/>
+<g transform="translate(62,466) scale(0.7500)" fill="none" stroke="#78CF87" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+<path d="m12 14 4-4M3.34 19a10 10 0 1 1 17.32 0"/>
+</g>
+<text x="92" y="482" fill="#F4F6F4" font-family="Montserrat, Manrope, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="19" font-weight="700" letter-spacing="-0.4">Censorcheck - проверка геоблока</text>
+<g transform="translate(1020,469) scale(0.6667)" fill="none" stroke="#78CF87" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>
+</g>
+<line x1="62" y1="500" x2="1038" y2="500" stroke="#272D29" stroke-width="1"/>
+<rect x="62" y="514" width="106" height="30" rx="15" fill="#19271C"/>
+<line x1="137" y1="520" x2="137" y2="538" stroke="#29472E" stroke-width="1"/>
+<text x="99" y="533" text-anchor="middle" fill="#A9B0AA" font-size="11">Доступно</text>
+<text x="152" y="533" text-anchor="middle" fill="#78CF87" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="12" font-weight="600">8</text>
+<rect x="176" y="514" width="140" height="30" rx="15" fill="#282316"/>
+<line x1="285" y1="520" x2="285" y2="538" stroke="#504426" stroke-width="1"/>
+<text x="230" y="533" text-anchor="middle" fill="#A9B0AA" font-size="11">Заблокировано</text>
+<text x="300" y="533" text-anchor="middle" fill="#D7AD55" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="12" font-weight="600">1</text>
+<rect x="324" y="514" width="182" height="30" rx="15" fill="#1B201C"/>
+<line x1="406" y1="520" x2="406" y2="538" stroke="#343C36" stroke-width="1"/>
+<text x="365" y="533" text-anchor="middle" fill="#A9B0AA" font-size="11">Проверено</text>
+<text x="456" y="533" text-anchor="middle" fill="#F4F6F4" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="12" font-weight="600">9 сервисов</text>
+<rect x="62" y="558" width="156" height="92" rx="12" fill="#1B201C"/>
+<g transform="translate(127,573) scale(1.0833)"><path d="M23.498 6.186a3.016 3.016 0 0 0-2.122-2.136C19.505 3.545 12 3.545 12 3.545s-7.505 0-9.377.505A3.017 3.017 0 0 0 .502 6.186C0 8.07 0 12 0 12s0 3.93.502 5.814a3.016 3.016 0 0 0 2.122 2.136c1.871.505 9.376.505 9.376.505s7.505 0 9.377-.505a3.015 3.015 0 0 0 2.122-2.136C24 15.93 24 12 24 12s0-3.93-.502-5.814zM9.545 15.568V8.432L15.818 12l-6.273 3.568z" fill="#B9C0B8"/></g>
+<text x="140" y="620" text-anchor="middle" fill="#F4F6F4" font-size="11">YouTube</text>
+<text x="140" y="638" text-anchor="middle" fill="#A9B0AA" font-size="11.5" font-weight="600">доступен</text>
+<rect x="226" y="558" width="156" height="92" rx="12" fill="#1B201C"/>
+<g transform="translate(291,573) scale(1.0833)"><path d="M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c2.0528 1.5076 4.0413 2.4228 5.9929 3.0294a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.961-.6067 3.9495-1.5219 6.0023-3.0294a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z" fill="#B9C0B8"/></g>
+<text x="304" y="620" text-anchor="middle" fill="#F4F6F4" font-size="11">Discord</text>
+<text x="304" y="638" text-anchor="middle" fill="#A9B0AA" font-size="11.5" font-weight="600">доступен</text>
+<rect x="390" y="558" width="156" height="92" rx="12" fill="#1B201C"/>
+<g transform="translate(455,573) scale(1.0833)"><path d="M16.5088 16.8447c.1475-.5068.0908-.9707-.1553-1.3154-.2246-.3164-.6045-.499-1.0615-.5205l-8.6592-.1123a.1559.1559 0 0 1-.1333-.0713c-.0283-.042-.0351-.0986-.021-.1553.0278-.084.1123-.1484.2036-.1562l8.7359-.1123c1.0351-.0489 2.1601-.8868 2.5537-1.9136l.499-1.3013c.0215-.0561.0293-.1128.0147-.168-.5625-2.5463-2.835-4.4453-5.5499-4.4453-2.5039 0-4.6284 1.6177-5.3876 3.8614-.4927-.3658-1.1187-.5625-1.794-.499-1.2026.119-2.1665 1.083-2.2861 2.2856-.0283.31-.0069.6128.0635.894C1.5683 13.171 0 14.7754 0 16.752c0 .1748.0142.3515.0352.5273.0141.083.0844.1475.1689.1475h15.9814c.0909 0 .1758-.0645.2032-.1553l.12-.4268zm2.7568-5.5634c-.0771 0-.1611 0-.2383.0112-.0566 0-.1054.0415-.127.0976l-.3378 1.1744c-.1475.5068-.0918.9707.1543 1.3164.2256.3164.6055.498 1.0625.5195l1.8437.1133c.0557 0 .1055.0263.1329.0703.0283.043.0351.1074.0214.1562-.0283.084-.1132.1485-.204.1553l-1.921.1123c-1.041.0488-2.1582.8867-2.5527 1.914l-.1406.3585c-.0283.0713.0215.1416.0986.1416h6.5977c.0771 0 .1474-.0489.169-.126.1122-.4082.1757-.837.1757-1.2803 0-2.6025-2.125-4.727-4.7344-4.727" fill="#B9C0B8"/></g>
+<text x="468" y="620" text-anchor="middle" fill="#F4F6F4" font-size="11">Cloudflare</text>
+<text x="468" y="638" text-anchor="middle" fill="#A9B0AA" font-size="11.5" font-weight="600">доступен</text>
+<rect x="554" y="558" width="156" height="92" rx="12" fill="#1B201C" stroke="#343C36" stroke-width="1"/>
+<g transform="translate(619,573) scale(1.0833)"><path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.419 1.56-.299.421-1.02.599-1.559.3z" fill="#B9C0B8"/></g>
+<text x="632" y="620" text-anchor="middle" fill="#F4F6F4" font-size="11">Spotify</text>
+<text x="632" y="638" text-anchor="middle" fill="#A9B0AA" font-size="11.5" font-weight="600">частично</text>
+<rect x="718" y="558" width="156" height="92" rx="12" fill="#1B201C"/>
+<g transform="translate(783,573) scale(1.0833)"><path d="m5.398 0 8.348 23.602c2.346.059 4.856.398 4.856.398L10.113 0H5.398zm8.489 0v9.172l4.715 13.33V0h-4.715zM5.398 1.5V24c1.873-.225 2.81-.312 4.715-.398V14.83L5.398 1.5z" fill="#B9C0B8"/></g>
+<text x="796" y="620" text-anchor="middle" fill="#F4F6F4" font-size="11">Netflix</text>
+<text x="796" y="638" text-anchor="middle" fill="#A9B0AA" font-size="11.5" font-weight="600">доступен</text>
+<rect x="882" y="558" width="156" height="92" rx="12" fill="#1B201C"/>
+<g transform="translate(947,573) scale(1.0833)"><path d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12" fill="#B9C0B8"/></g>
+<text x="960" y="620" text-anchor="middle" fill="#F4F6F4" font-size="11">GitHub</text>
+<text x="960" y="638" text-anchor="middle" fill="#A9B0AA" font-size="11.5" font-weight="600">доступен</text>
+<rect x="62" y="658" width="156" height="92" rx="12" fill="#1B201C"/>
+<g transform="translate(127,673) scale(1.0833)"><path d="M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z" fill="#B9C0B8"/></g>
+<text x="140" y="720" text-anchor="middle" fill="#F4F6F4" font-size="11">Google</text>
+<text x="140" y="738" text-anchor="middle" fill="#A9B0AA" font-size="11.5" font-weight="600">доступен</text>
+<rect x="226" y="658" width="156" height="92" rx="12" fill="#1B201C"/>
+<g transform="translate(291,673) scale(1.0833)"><path d="M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z" fill="#B9C0B8"/></g>
+<text x="304" y="720" text-anchor="middle" fill="#F4F6F4" font-size="11">Telegram</text>
+<text x="304" y="738" text-anchor="middle" fill="#A9B0AA" font-size="11.5" font-weight="600">доступен</text>
+<rect x="390" y="658" width="156" height="92" rx="12" fill="#1B201C"/>
+<g transform="translate(455,673) scale(1.0833)"><path d="M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z" fill="#B9C0B8"/></g>
+<text x="468" y="720" text-anchor="middle" fill="#F4F6F4" font-size="11">OpenAI</text>
+<text x="468" y="738" text-anchor="middle" fill="#A9B0AA" font-size="11.5" font-weight="600">доступен</text>
+<rect x="32" y="792" width="1036" height="190" rx="14" fill="#151816" stroke="#272D29" stroke-width="1"/>
+<g transform="translate(62,810) scale(0.7500)" fill="none" stroke="#78CF87" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+<path d="m12 14 4-4M3.34 19a10 10 0 1 1 17.32 0"/>
+</g>
+<text x="92" y="826" fill="#F4F6F4" font-family="Montserrat, Manrope, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="19" font-weight="700" letter-spacing="-0.4">Censorcheck - DPI (серверы РФ)</text>
+<g transform="translate(1020,813) scale(0.6667)" fill="none" stroke="#78CF87" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>
+</g>
+<line x1="62" y1="844" x2="1038" y2="844" stroke="#272D29" stroke-width="1"/>
+<rect x="62" y="858" width="106" height="30" rx="15" fill="#1B201C"/>
+<line x1="137" y1="864" x2="137" y2="882" stroke="#343C36" stroke-width="1"/>
+<text x="99" y="877" text-anchor="middle" fill="#A9B0AA" font-size="11">Серверов</text>
+<text x="152" y="877" text-anchor="middle" fill="#F4F6F4" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="12" font-weight="600">6</text>
+<rect x="176" y="858" width="99" height="30" rx="15" fill="#19271C"/>
+<line x1="244" y1="864" x2="244" y2="882" stroke="#29472E" stroke-width="1"/>
+<text x="210" y="877" text-anchor="middle" fill="#A9B0AA" font-size="11">Успешно</text>
+<text x="259" y="877" text-anchor="middle" fill="#78CF87" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="12" font-weight="600">6</text>
+<rect x="283" y="858" width="157" height="30" rx="15" fill="#19271C"/>
+<line x1="378" y1="864" x2="378" y2="882" stroke="#29472E" stroke-width="1"/>
+<text x="330" y="877" text-anchor="middle" fill="#A9B0AA" font-size="11">Средний RTT</text>
+<text x="409" y="877" text-anchor="middle" fill="#78CF87" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="12" font-weight="600">43 ms</text>
+<text x="62" y="915" fill="#F4F6F4" font-size="13">Москва</text>
+<text x="534" y="917" text-anchor="end" fill="#78CF87" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="17" font-weight="700">38 ms</text>
+<rect x="62" y="925" width="472" height="6" rx="3" fill="#242925"/>
+<rect x="62" y="925" width="415" height="6" rx="3" fill="#78CF87"/>
+<text x="566" y="915" fill="#F4F6F4" font-size="13">Санкт-Петербург</text>
+<text x="1038" y="917" text-anchor="end" fill="#78CF87" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="17" font-weight="700">46 ms</text>
+<rect x="566" y="925" width="472" height="6" rx="3" fill="#242925"/>
+<rect x="566" y="925" width="382" height="6" rx="3" fill="#78CF87"/>
+<text x="62" y="947" fill="#F4F6F4" font-size="13">Екатеринбург</text>
+<text x="534" y="949" text-anchor="end" fill="#78CF87" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="17" font-weight="700">51 ms</text>
+<rect x="62" y="957" width="472" height="6" rx="3" fill="#242925"/>
+<rect x="62" y="957" width="358" height="6" rx="3" fill="#78CF87"/>
+<text x="566" y="947" fill="#F4F6F4" font-size="13">Новосибирск</text>
+<text x="1038" y="949" text-anchor="end" fill="#78CF87" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="17" font-weight="700">62 ms</text>
+<rect x="566" y="957" width="472" height="6" rx="3" fill="#242925"/>
+<rect x="566" y="957" width="320" height="6" rx="3" fill="#78CF87"/>
+<rect x="32" y="1000" width="1036" height="190" rx="14" fill="#151816" stroke="#272D29" stroke-width="1"/>
+<g transform="translate(62,1018) scale(0.7500)" fill="none" stroke="#78CF87" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+<path d="m12 14 4-4M3.34 19a10 10 0 1 1 17.32 0"/>
+</g>
+<text x="92" y="1034" fill="#F4F6F4" font-family="Montserrat, Manrope, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="19" font-weight="700" letter-spacing="-0.4">Censorcheck - censorcheck.tlab.pw</text>
+<g transform="translate(1020,1021) scale(0.6667)" fill="none" stroke="#78CF87" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>
+</g>
+<line x1="62" y1="1052" x2="1038" y2="1052" stroke="#272D29" stroke-width="1"/>
+<rect x="62" y="1066" width="207" height="30" rx="15" fill="#19271C"/>
+<line x1="124" y1="1072" x2="124" y2="1090" stroke="#29472E" stroke-width="1"/>
+<text x="93" y="1085" text-anchor="middle" fill="#A9B0AA" font-size="11">Статус</text>
+<text x="196" y="1085" text-anchor="middle" fill="#78CF87" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="12" font-weight="600">маршрут доступен</text>
+<rect x="277" y="1066" width="137" height="30" rx="15" fill="#1B201C"/>
+<line x1="352" y1="1072" x2="352" y2="1090" stroke="#343C36" stroke-width="1"/>
+<text x="314" y="1085" text-anchor="middle" fill="#A9B0AA" font-size="11">Протокол</text>
+<text x="383" y="1085" text-anchor="middle" fill="#F4F6F4" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="12" font-weight="600">HTTPS</text>
+<rect x="422" y="1066" width="137" height="30" rx="15" fill="#19271C"/>
+<line x1="497" y1="1072" x2="497" y2="1090" stroke="#29472E" stroke-width="1"/>
+<text x="459" y="1085" text-anchor="middle" fill="#A9B0AA" font-size="11">Задержка</text>
+<text x="528" y="1085" text-anchor="middle" fill="#78CF87" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="12" font-weight="600">41 ms</text>
+<text x="88" y="1130" fill="#F4F6F4" font-size="13.5">IPv4</text>
+<text x="534" y="1130" text-anchor="end" fill="#78CF87" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="11.5">работает</text>
+<text x="592" y="1130" fill="#F4F6F4" font-size="13.5">TLS</text>
+<text x="1038" y="1130" text-anchor="end" fill="#78CF87" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="11.5">работает</text>
+<text x="88" y="1162" fill="#F4F6F4" font-size="13.5">HTTP/2</text>
+<text x="534" y="1162" text-anchor="end" fill="#78CF87" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="11.5">работает</text>
+</svg>
