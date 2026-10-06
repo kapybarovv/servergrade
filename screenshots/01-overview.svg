@@ -4,7 +4,7 @@
 <g transform="translate(41,43) scale(0.7500)" fill="none" stroke="#10120F" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
 <rect width="20" height="8" x="2" y="2" rx="2"/><rect width="20" height="8" x="2" y="14" rx="2"/><line x1="6" x2="6.01" y1="6" y2="6"/><line x1="6" x2="6.01" y1="18" y2="18"/>
 </g>
-<text x="80" y="49" fill="#F4F6F4" font-family="Montserrat, Manrope, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="15" font-weight="700">GH Cloud</text>
+<text x="80" y="49" fill="#F4F6F4" font-family="Montserrat, Manrope, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="15" font-weight="700">ServerGrade Benchmark</text>
 <text x="80" y="69" fill="#717872" font-size="10.5">91.198.*.* · NL/Amsterdam · 2026-10-05 23:26</text>
 <text x="1068" y="50" text-anchor="end" fill="#A9B0AA" font-family="Manrope, Montserrat, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="12">1 / 4</text>
 <text x="32" y="124" fill="#F4F6F4" font-family="Montserrat, Manrope, Roboto, 'Noto Sans', 'DejaVu Sans', sans-serif" font-size="30" font-weight="700" letter-spacing="-1">Диагностика сервера</text>

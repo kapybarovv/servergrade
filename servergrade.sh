@@ -4,7 +4,7 @@
 #  ServerGrade — интерактивная диагностика сервера
 # ============================================================
 
-SCRIPT_VERSION="1.2.0"
+SCRIPT_VERSION="1.3.0"
 REPO_URL="https://raw.githubusercontent.com/kapybarovv/servergrade/main/servergrade.sh"
 
 # Цвета
@@ -1070,7 +1070,11 @@ publish_result_page() {
         --data-urlencode "cpu=$SYS_CPU" \
         --data-urlencode "cores=$SYS_CORES" \
         --data-urlencode "ram=$SYS_RAM" \
+        --data-urlencode "ram_type=$SYS_RAM_TYPE" \
         --data-urlencode "disk=$SYS_DISK" \
+        --data-urlencode "disk_type=$SYS_DISK_TYPE" \
+        --data-urlencode "disk_model=$SYS_DISK_MODEL" \
+        --data-urlencode "server_vendor=$SYS_SERVER_INFO" \
         --data-urlencode "report_url=$report_url" \
         --data-urlencode "runner_version=$SCRIPT_VERSION" \
         "$SERVERGRADE_PUBLISH_URL" 2>/dev/null) || {
@@ -1195,9 +1199,33 @@ gather_system_facts() {
     SYS_RAM=$(awk '/MemTotal/ {printf "%.1f GiB", $2/1048576}' /proc/meminfo 2>/dev/null)
     [[ -z "$SYS_RAM" ]] && SYS_RAM=$(free -h 2>/dev/null | awk '/Mem:/ {print $2}')
     [[ -z "$SYS_RAM" ]] && SYS_RAM="—"
+    SYS_RAM_TYPE=$(dmidecode -t memory 2>/dev/null | awk -F: '
+        /^[[:space:]]*Type:/ {gsub(/^[[:space:]]+|[[:space:]]+$/, "", $2); if($2~/^DDR[2-5]$/) seen[$2]=1}
+        END {for(i=2;i<=5;i++) if(seen["DDR"i]) {if(out)printf " / "; printf "DDR%d",i; out=1}}' | head -1)
+    [[ -z "$SYS_RAM_TYPE" ]] && SYS_RAM_TYPE=$(lshw -class memory 2>/dev/null | grep -oE 'DDR[2-5]' | sort -u | paste -sd/ -)
+    [[ -z "$SYS_RAM_TYPE" ]] && SYS_RAM_TYPE="не раскрыт"
     # размер именно корневого ФС (df --total раздувал цифру за счёт tmpfs/overlay/devtmpfs)
     SYS_DISK=$(df -h / 2>/dev/null | awk 'NR==2 {print $2" · "$5}')
     [[ -z "$SYS_DISK" ]] && SYS_DISK="—"
+    local disk_row disk_name disk_rota disk_tran disk_vendor disk_model
+    disk_row=$(lsblk -dnP -o NAME,TYPE,ROTA,TRAN,VENDOR,MODEL 2>/dev/null | grep -m1 'TYPE="disk"')
+    disk_name=$(printf '%s' "$disk_row" | sed -n 's/.*NAME="\([^"]*\)".*/\1/p')
+    disk_rota=$(printf '%s' "$disk_row" | sed -n 's/.*ROTA="\([^"]*\)".*/\1/p')
+    disk_tran=$(printf '%s' "$disk_row" | sed -n 's/.*TRAN="\([^"]*\)".*/\1/p')
+    disk_vendor=$(printf '%s' "$disk_row" | sed -n 's/.*VENDOR="\([^"]*\)".*/\1/p')
+    disk_model=$(printf '%s' "$disk_row" | sed -n 's/.*MODEL="\([^"]*\)".*/\1/p')
+    if [[ "$disk_name" == nvme* || "$disk_tran" == "nvme" ]]; then SYS_DISK_TYPE="NVMe SSD"
+    elif [[ "$disk_rota" == "0" ]]; then SYS_DISK_TYPE="SSD${disk_tran:+ · ${disk_tran^^}}"
+    elif [[ "$disk_rota" == "1" ]]; then SYS_DISK_TYPE="HDD${disk_tran:+ · ${disk_tran^^}}"
+    else SYS_DISK_TYPE="виртуальный / не раскрыт"; fi
+    SYS_DISK_MODEL=$(printf '%s %s' "$disk_vendor" "$disk_model" | sed -E 's/[[:space:]]+/ /g;s/^ //;s/ $//')
+    [[ -z "$SYS_DISK_MODEL" ]] && SYS_DISK_MODEL="не раскрыт"
+    SYS_SERVER_VENDOR=$(cat /sys/class/dmi/id/sys_vendor 2>/dev/null)
+    [[ -z "$SYS_SERVER_VENDOR" ]] && SYS_SERVER_VENDOR=$(dmidecode -s system-manufacturer 2>/dev/null | head -1)
+    SYS_SERVER_PRODUCT=$(cat /sys/class/dmi/id/product_name 2>/dev/null)
+    [[ -z "$SYS_SERVER_PRODUCT" ]] && SYS_SERVER_PRODUCT=$(dmidecode -s system-product-name 2>/dev/null | head -1)
+    SYS_SERVER_INFO=$(printf '%s · %s' "$SYS_SERVER_VENDOR" "$SYS_SERVER_PRODUCT" | sed -E 's/^[[:space:]·]+//;s/[[:space:]·]+$//;s/[[:space:]]+/ /g')
+    [[ -z "$SYS_SERVER_INFO" ]] && SYS_SERVER_INFO="не раскрыт гипервизором"
     SYS_VIRT=$(systemd-detect-virt 2>/dev/null || echo "unknown")
     [[ -z "$SYS_VIRT" ]] && SYS_VIRT="unknown"
     SYS_CC=$(sysctl -n net.ipv4.tcp_congestion_control 2>/dev/null || echo "?")
@@ -2071,7 +2099,7 @@ render_services() {
 # теперь несколько и рисуют их разные функции — общий набор вынесен в глобальные,
 # иначе каждая страница тащила бы копию шкалы.
 mt_style_init() {
-    # Govnohost/GH Cloud: глубокие зелёно-серые поверхности, мягкая белая
+    # ServerGrade: глубокие зелёно-серые поверхности, мягкая белая
     # граница и один фирменный зелёный акцент.
     C_BG="#0D0F0E"; C_SC="#151816"; C_SCH="#1B201C"; C_TRACK="#242925"
     C_LINE="#272D29"; C_LINE2="#343C36"
@@ -2237,7 +2265,7 @@ sv_head_full() {
     local Y="$1" xr=$((PAD+CARDW))
     sv "<rect x=\"$PAD\" y=\"$((Y+4))\" width=\"42\" height=\"42\" rx=\"12\" fill=\"$C_ACC\"/>"
     sv_lucide server $((PAD+11)) $((Y+15)) 20 "$C_INK"
-    sv "<text x=\"$((PAD+56))\" y=\"$((Y+24))\" fill=\"$C_TXT\" font-family=\"$F_DISPLAY\" font-size=\"18\" font-weight=\"700\" letter-spacing=\"-0.4\">GH Cloud</text>"
+    sv "<text x=\"$((PAD+56))\" y=\"$((Y+24))\" fill=\"$C_TXT\" font-family=\"$F_DISPLAY\" font-size=\"18\" font-weight=\"700\" letter-spacing=\"-0.4\">ServerGrade Benchmark</text>"
     sv "<text x=\"$((PAD+56))\" y=\"$((Y+43))\" fill=\"$C_TXT3\" font-size=\"11.5\">SERVERGRADE · диагностика сервера</text>"
     sv "<text x=\"$PAD\" y=\"$((Y+76))\" fill=\"$C_TXT2\" font-family=\"$F_MONO\" font-size=\"11.5\">$(sv_esc "$(mt_ident_line)")</text>"
     # главное число сводки — крупнее логотипа: это и есть результат прогона
@@ -2257,7 +2285,7 @@ sv_head_slim() {
     local Y="$1" xr=$((PAD+CARDW))
     sv "<rect x=\"$PAD\" y=\"$((Y+2))\" width=\"34\" height=\"34\" rx=\"10\" fill=\"$C_ACC\"/>"
     sv_lucide server $((PAD+9)) $((Y+11)) 16 "$C_INK"
-    sv "<text x=\"$((PAD+46))\" y=\"$((Y+16))\" fill=\"$C_TXT\" font-family=\"$F_DISPLAY\" font-size=\"15\" font-weight=\"700\">GH Cloud</text>"
+    sv "<text x=\"$((PAD+46))\" y=\"$((Y+16))\" fill=\"$C_TXT\" font-family=\"$F_DISPLAY\" font-size=\"15\" font-weight=\"700\">ServerGrade Benchmark</text>"
     sv "<text x=\"$((PAD+46))\" y=\"$((Y+36))\" fill=\"$C_TXT3\" font-family=\"$F_MONO\" font-size=\"10.5\">$(sv_esc "$(mt_ident_line)")</text>"
     sv "<text x=\"$xr\" y=\"$((Y+22))\" text-anchor=\"end\" fill=\"$C_ACC\" font-family=\"$F_MONO\" font-size=\"20\" font-weight=\"600\">${MT_PAGE_I} / ${MT_PAGE_N}</text>"
     sv "<text x=\"$xr\" y=\"$((Y+42))\" text-anchor=\"end\" fill=\"$C_TXT3\" font-size=\"10.5\" letter-spacing=\"1.4\">СТРАНИЦА</text>"
@@ -2271,7 +2299,7 @@ sv_head_category() {
     local Y="$1" title="$2" note="$3" xr=$((PAD+CARDW))
     sv "<rect x=\"$PAD\" y=\"$((Y+2))\" width=\"36\" height=\"36\" rx=\"10\" fill=\"$C_ACC\"/>"
     sv_lucide server $((PAD+9)) $((Y+11)) 18 "$C_INK"
-    sv "<text x=\"$((PAD+48))\" y=\"$((Y+17))\" fill=\"$C_TXT\" font-family=\"$F_DISPLAY\" font-size=\"15\" font-weight=\"700\">GH Cloud</text>"
+    sv "<text x=\"$((PAD+48))\" y=\"$((Y+17))\" fill=\"$C_TXT\" font-family=\"$F_DISPLAY\" font-size=\"15\" font-weight=\"700\">ServerGrade Benchmark</text>"
     sv "<text x=\"$((PAD+48))\" y=\"$((Y+37))\" fill=\"$C_TXT3\" font-size=\"10.5\">$(sv_esc "$(mt_ident_line)")</text>"
     sv "<text x=\"$xr\" y=\"$((Y+18))\" text-anchor=\"end\" fill=\"$C_TXT2\" font-family=\"$F_UI\" font-size=\"12\">${MT_PAGE_I} / ${MT_PAGE_N}</text>"
     sv "<text x=\"$PAD\" y=\"$((Y+92))\" fill=\"$C_TXT\" font-family=\"$F_DISPLAY\" font-size=\"30\" font-weight=\"700\" letter-spacing=\"-1\">$(sv_esc "$title")</text>"
@@ -2393,7 +2421,8 @@ sv_card_server() {
     local country_name flag_b64
     country_name=$(mt_country_name "$SYS_COUNTRY")
     flag_b64=$(mt_apple_flag_b64 "$SYS_COUNTRY")
-    SF+=( "ГЕО|$country_name / $SYS_CITY" "ASN|$SYS_ASN" "BBR / QDISC|$SYS_CC / $SYS_QDISC" \
+    SF+=( "ГЕО|$country_name / $SYS_CITY" "ASN|$SYS_ASN" "ВЕНДОР|$SYS_SERVER_INFO" \
+        "ПАМЯТЬ|$SYS_RAM_TYPE" "НАКОПИТЕЛЬ|$SYS_DISK_TYPE · $SYS_DISK_MODEL" "BBR / QDISC|$SYS_CC / $SYS_QDISC" \
         "UPTIME|$SYS_UPTIME" "LOAD AVG|$SYS_LOAD" )
     local SR=$(( (${#SF[@]}+1)/2 )) SH
     SH=$(( 116 + SR*30 + 14 ))
@@ -2408,8 +2437,8 @@ sv_card_server() {
     for label in CPU RAM ДИСК; do
         case "$label" in
             CPU) value="$SYS_CPU · $SYS_CORES ядер"; value_x=$((px+52)); pw=$cpu_w; icon=cpu ;;
-            RAM) value="$SYS_RAM"; value_x=$((px+52)); pw=$ram_w; icon=memory ;;
-            *) value="$SYS_DISK"; value_x=$((px+52)); pw=$disk_w; icon=drive ;;
+            RAM) value="$SYS_RAM · $SYS_RAM_TYPE"; value_x=$((px+52)); pw=$ram_w; icon=memory ;;
+            *) value="$SYS_DISK · $SYS_DISK_TYPE"; value_x=$((px+52)); pw=$disk_w; icon=drive ;;
         esac
         sv "<rect x=\"$px\" y=\"$pills_y\" width=\"$pw\" height=\"36\" rx=\"18\" fill=\"$C_SCH\" stroke=\"$C_LINE2\" stroke-width=\"1\"/>"
         sv_lucide "$icon" $((px+16)) $((pills_y+9)) 18 "$C_ACC"

@@ -1,0 +1,44 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 1120">
+  <rect width="1400" height="1120" fill="#090b0a"/>
+  <rect x="86" y="58" width="1228" height="1004" rx="24" fill="#111412" stroke="#29302b" stroke-width="2"/>
+  <rect x="86" y="58" width="1228" height="56" rx="24" fill="#181c19"/>
+  <rect x="86" y="90" width="1228" height="24" fill="#181c19"/>
+  <circle cx="124" cy="86" r="7" fill="#ff6b6b"/><circle cx="150" cy="86" r="7" fill="#dfb65b"/><circle cx="176" cy="86" r="7" fill="#78cf87"/>
+  <text x="700" y="92" text-anchor="middle" fill="#747c75" font-family="Manrope, sans-serif" font-size="15">root@server — servergrade</text>
+  <g transform="translate(142 157)" font-family="Manrope, sans-serif">
+    <text x="0" y="23" fill="#78cf87" font-size="24">◆</text>
+    <text x="39" y="23" fill="#f4f6f4" font-family="Montserrat, Manrope, sans-serif" font-size="22" font-weight="700">SERVERGRADE</text>
+    <text x="215" y="23" fill="#717872" font-size="15">v1.3.0</text>
+    <text x="0" y="55" fill="#929a93" font-size="16">Независимая диагностика сервера</text>
+    <line x1="0" y1="82" x2="1116" y2="82" stroke="#29302b"/>
+
+    <rect x="0" y="112" width="48" height="30" rx="15" fill="#78cf87"/><text x="24" y="133" text-anchor="middle" fill="#10130f" font-size="14" font-weight="800">12</text>
+    <text x="66" y="134" fill="#f4f6f4" font-size="18" font-weight="650">Полная диагностика</text><text x="269" y="134" fill="#717872" font-size="15">· рекомендуется</text>
+
+    <text x="0" y="190" fill="#717872" font-size="12" letter-spacing="2">СЕТЬ И ДОСТУПНОСТЬ</text>
+    <g font-size="16">
+      <g transform="translate(0 216)"><rect width="42" height="28" rx="14" fill="#1b201c" stroke="#343c36"/><text x="21" y="20" text-anchor="middle" fill="#78cf87" font-weight="700">1</text><text x="61" y="20" fill="#f4f6f4">Геолокация IP</text><text x="220" y="20" fill="#717872">· IP Region</text></g>
+      <g transform="translate(0 260)"><rect width="42" height="28" rx="14" fill="#1b201c" stroke="#343c36"/><text x="21" y="20" text-anchor="middle" fill="#78cf87" font-weight="700">2</text><text x="61" y="20" fill="#f4f6f4">Геоблокировки</text><text x="220" y="20" fill="#717872">· CensorCheck</text></g>
+      <g transform="translate(0 304)"><rect width="42" height="28" rx="14" fill="#1b201c" stroke="#343c36"/><text x="21" y="20" text-anchor="middle" fill="#78cf87" font-weight="700">3</text><text x="61" y="20" fill="#f4f6f4">DPI в России</text><text x="220" y="20" fill="#717872">· CensorCheck</text></g>
+      <g transform="translate(0 348)"><rect width="42" height="28" rx="14" fill="#1b201c" stroke="#343c36"/><text x="21" y="20" text-anchor="middle" fill="#78cf87" font-weight="700">4</text><text x="61" y="20" fill="#f4f6f4">Доступность сайтов</text><text x="250" y="20" fill="#717872">· TLab</text></g>
+      <g transform="translate(0 392)"><rect width="42" height="28" rx="14" fill="#1b201c" stroke="#343c36"/><text x="21" y="20" text-anchor="middle" fill="#78cf87" font-weight="700">5</text><text x="61" y="20" fill="#f4f6f4">Скорость до РФ</text><text x="220" y="20" fill="#717872">· iPerf3</text></g>
+      <g transform="translate(0 436)"><rect width="42" height="28" rx="14" fill="#1b201c" stroke="#343c36"/><text x="21" y="20" text-anchor="middle" fill="#78cf87" font-weight="700">6</text><text x="61" y="20" fill="#f4f6f4">Российские маршруты</text><text x="269" y="20" fill="#717872">· TLab iPerf3</text></g>
+    </g>
+
+    <text x="566" y="190" fill="#717872" font-size="12" letter-spacing="2">СЕРВЕР И КАЧЕСТВО IP</text>
+    <g transform="translate(566 216)" font-size="16">
+      <g><rect width="42" height="28" rx="14" fill="#1b201c" stroke="#343c36"/><text x="21" y="20" text-anchor="middle" fill="#78cf87" font-weight="700">7</text><text x="61" y="20" fill="#f4f6f4">Производительность</text><text x="260" y="20" fill="#717872">· YABS</text></g>
+      <g transform="translate(0 44)"><rect width="42" height="28" rx="14" fill="#1b201c" stroke="#343c36"/><text x="21" y="20" text-anchor="middle" fill="#78cf87" font-weight="700">8</text><text x="61" y="20" fill="#f4f6f4">Доступ к сервисам</text><text x="245" y="20" fill="#717872">· IP Check Place</text></g>
+      <g transform="translate(0 88)"><rect width="42" height="28" rx="14" fill="#1b201c" stroke="#343c36"/><text x="21" y="20" text-anchor="middle" fill="#78cf87" font-weight="700">9</text><text x="61" y="20" fill="#f4f6f4">Система и сеть</text><text x="220" y="20" fill="#717872">· bench.sh</text></g>
+      <g transform="translate(0 132)"><rect width="42" height="28" rx="14" fill="#1b201c" stroke="#343c36"/><text x="21" y="20" text-anchor="middle" fill="#78cf87" font-weight="700">10</text><text x="61" y="20" fill="#f4f6f4">Репутация адреса</text><text x="245" y="20" fill="#717872">· IPQuality</text></g>
+      <g transform="translate(0 176)"><rect width="42" height="28" rx="14" fill="#1b201c" stroke="#343c36"/><text x="21" y="20" text-anchor="middle" fill="#78cf87" font-weight="700">11</text><text x="61" y="20" fill="#f4f6f4">Процессор</text><text x="165" y="20" fill="#717872">· sysbench CPU</text></g>
+    </g>
+
+    <line x1="0" y1="500" x2="1116" y2="500" stroke="#29302b"/>
+    <text x="0" y="548" fill="#717872" font-size="12" letter-spacing="2">СИСТЕМА</text>
+    <g transform="translate(0 574)" font-size="16"><rect width="42" height="28" rx="14" fill="#1b201c" stroke="#343c36"/><text x="21" y="20" text-anchor="middle" fill="#78cf87" font-weight="700">13</text><text x="61" y="20" fill="#f4f6f4">Настройки сервера</text><text x="240" y="20" fill="#717872">· BBR · IPv6</text></g>
+    <g transform="translate(566 574)" font-size="16"><rect width="42" height="28" rx="14" fill="#1b201c" stroke="#343c36"/><text x="21" y="20" text-anchor="middle" fill="#78cf87" font-weight="700">0</text><text x="61" y="20" fill="#f4f6f4">Выйти</text></g>
+    <rect x="0" y="650" width="1116" height="62" rx="14" fill="#151816" stroke="#29302b"/><text x="22" y="689" fill="#f4f6f4" font-size="16" font-weight="650">Введите номер</text><text x="174" y="689" fill="#78cf87" font-size="20">›</text><rect x="197" y="671" width="2" height="23" fill="#78cf87"/>
+    <text x="0" y="775" fill="#565c56" font-size="13">servergrade.sh · интерактивный режим · результаты сохраняются локально</text>
+  </g>
+</svg>

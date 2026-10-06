@@ -3,12 +3,77 @@
 Минимальный Cloudflare Worker публикует страницы `/test/12345678`. Результаты
 не называются подтверждёнными: предупреждение постоянно находится над оценкой.
 
-```bash
-npx wrangler d1 create servergrade
-# вставить database_id в wrangler.jsonc
-npx wrangler d1 execute servergrade --remote --file schema.sql
-npx wrangler deploy
-```
+## Развёртывание
+
+1. Установите Node.js, откройте этот каталог и поставьте локальный Wrangler:
+
+   ```bash
+   cd platform
+   npm install
+   npx wrangler login
+   ```
+
+2. Создайте бесплатную D1-базу ближе к основной аудитории:
+
+   ```bash
+   npx wrangler d1 create servergrade --location=weur
+   ```
+
+3. Скопируйте выданный `database_id` в `wrangler.jsonc`, заменив
+   `REPLACE_AFTER_WRANGLER_D1_CREATE`. Binding должен остаться `DB`.
+
+4. Создайте таблицу сначала локально и проверьте Worker:
+
+   ```bash
+   npm run db:local
+   npm run dev
+   ```
+
+   Откройте `http://localhost:8787`.
+
+5. Создайте таблицу в production D1 и опубликуйте Worker:
+
+   ```bash
+   npm run db:remote
+   npm run deploy
+   ```
+
+   Wrangler покажет адрес вида
+   `https://servergrade-results.<account>.workers.dev`.
+
+6. Проверьте ручную публикацию:
+
+   ```bash
+   curl -X POST https://servergrade-results.<account>.workers.dev/api/results \
+     -H 'Content-Type: application/x-www-form-urlencoded' \
+     --data-urlencode 'score=84' \
+     --data-urlencode 'network_score=90' \
+     --data-urlencode 'performance_score=81' \
+     --data-urlencode 'quality_score=79' \
+     --data-urlencode 'coverage=100' \
+     --data-urlencode 'country=NL' \
+     --data-urlencode 'city=Amsterdam' \
+     --data-urlencode 'cpu=AMD EPYC' \
+     --data-urlencode 'cores=4' \
+     --data-urlencode 'ram=8 GiB' \
+     --data-urlencode 'ram_type=DDR4' \
+     --data-urlencode 'disk=100 GiB' \
+     --data-urlencode 'disk_type=NVMe SSD' \
+     --data-urlencode 'disk_model=Samsung PM9A3' \
+     --data-urlencode 'server_vendor=Supermicro'
+   ```
+
+7. Включите публикацию из ServerGrade:
+
+   ```bash
+   SERVERGRADE_PUBLISH_URL=https://servergrade-results.<account>.workers.dev/api/results servergrade
+   ```
+
+8. Для своего домена откройте Cloudflare Dashboard → **Workers & Pages** →
+   **servergrade-results** → **Settings** → **Domains & Routes** → **Add** →
+   **Custom Domain** и укажите `servergra.de`. Cloudflare создаст DNS-запись и
+   сертификат. После этого используйте
+   `SERVERGRADE_PUBLISH_URL=https://servergra.de/api/results`.
 
 Публикация выполняется `POST /api/results` в формате
 `application/x-www-form-urlencoded`. Endpoint намеренно принимает только
