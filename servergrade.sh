@@ -4,7 +4,7 @@
 #  ServerGrade — интерактивная диагностика сервера
 # ============================================================
 
-SCRIPT_VERSION="1.3.0"
+SCRIPT_VERSION="1.3.1"
 REPO_URL="https://raw.githubusercontent.com/kapybarovv/servergrade/main/servergrade.sh"
 
 # Цвета
@@ -20,9 +20,10 @@ SUMMARY_DIR=""             # /tmp/multitest-summary-<ts>
 SUMMARY_TS=""
 SCRIPT_CAPTURE="util"      # util | busybox
 MT_UA="Mozilla/5.0 (X11; Linux x86_64) servergrade/${SCRIPT_VERSION}"
-# После развёртывания platform/ задайте адрес API, например:
-# SERVERGRADE_PUBLISH_URL=https://servergra.de/api/results servergrade
-SERVERGRADE_PUBLISH_URL="${SERVERGRADE_PUBLISH_URL:-}"
+# Официальный SaaS принимает пользовательские замеры автоматически. Отключить
+# публикацию можно явно: SERVERGRADE_PUBLISH=0 servergrade
+SERVERGRADE_PUBLISH="${SERVERGRADE_PUBLISH:-1}"
+SERVERGRADE_PUBLISH_URL="${SERVERGRADE_PUBLISH_URL:-https://servergra.de/api/results}"
 
 # Спонсор: подпись в подвале сводки (см. sv_sponsor) и блок в главном меню
 # (см. print_stencloud_promo).
@@ -1056,7 +1057,7 @@ upload_report() {
 # определяет буквенный grade из числового score.
 publish_result_page() {
     local report_url="$1" response page
-    [[ -n "$SERVERGRADE_PUBLISH_URL" ]] || return 0
+    [[ "$SERVERGRADE_PUBLISH" == "1" && -n "$SERVERGRADE_PUBLISH_URL" ]] || return 0
     mt_calculate_score
     response=$(curl -fsS --max-time 20 -X POST \
         -H 'Content-Type: application/x-www-form-urlencoded' \
@@ -3070,6 +3071,8 @@ render_and_upload_summary() {
 
 show_menu() {
     print_header
+    echo -e "  ${CYAN}Результаты публикуются на servergra.de${NC}"
+    echo -e "  ${YELLOW}Публикация пользовательская, без подтверждения достоверности.${NC}"
     menu_item 12 "Полная диагностика" "рекомендуется"
 
     menu_label "СЕТЬ И ДОСТУПНОСТЬ"

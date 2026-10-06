@@ -34,6 +34,11 @@ function renderResult(r) {
   <div class="actions">${report ? `<a class="button" href="${escapeHtml(report)}" rel="nofollow noopener">Открыть полный отчёт</a>` : ""}<a class="button secondary" href="https://github.com/kapybarovv/servergrade">Методика на GitHub</a></div></main>`);
 }
 
+function renderHome(rows) {
+  const list = rows.length ? rows.map((r) => `<a href="/test/${escapeHtml(r.id)}" style="display:grid;grid-template-columns:110px 1fr auto;gap:18px;align-items:center;padding:17px 0;border-top:1px solid var(--line);text-decoration:none"><span class="muted">#${escapeHtml(r.id)}</span><span>${escapeHtml(r.country)} · ${escapeHtml(r.city)}<small style="display:block;color:var(--quiet)">${escapeHtml(r.cpu)}</small></span><strong style="color:var(--accent);font-size:21px">${clamp(r.score)}</strong></a>`).join("") : `<p class="muted">Пока нет опубликованных замеров.</p>`;
+  return shell("Открытые замеры", `<main><div class="eyebrow">SERVERGRADE</div><h1>Открытые замеры серверов</h1><p class="muted">Запустите открытый runner с GitHub — результат автоматически появится здесь.</p><aside class="warning"><strong>Не является гарантией характеристик</strong>Опубликованные результаты присылают пользователи. Они могут быть неточными или подделанными.</aside><div class="actions"><a class="button" href="https://github.com/kapybarovv/servergrade">Запустить тест</a></div><section style="margin-top:70px"><div class="eyebrow" style="margin-bottom:16px">ПОСЛЕДНИЕ ТЕСТЫ</div>${list}</section></main>`);
+}
+
 async function publish(request, env) {
   const type = request.headers.get("content-type") || "";
   if (!type.includes("application/x-www-form-urlencoded")) return new Response("Expected form data", { status: 415 });
@@ -62,6 +67,10 @@ export default {
       const row = await env.DB.prepare("SELECT * FROM results WHERE id=?").bind(match[1]).first();
       return row ? new Response(renderResult(row), { headers }) : new Response("Result not found", { status: 404 });
     }
-    return new Response(shell("Открытые замеры", `<main><div class="eyebrow">SERVERGRADE</div><h1>Открытые замеры серверов</h1><p class="muted">Публичные страницы результатов без заявления о независимой верификации. Код и методика открыты на GitHub.</p><aside class="warning"><strong>Не является гарантией характеристик</strong>Опубликованные результаты присылают пользователи. Они могут быть неточными или подделанными.</aside><div class="actions"><a class="button" href="https://github.com/kapybarovv/servergrade">Запустить тест</a></div></main>`), { headers });
+    if (request.method === "GET" && url.pathname === "/") {
+      const query = await env.DB.prepare("SELECT id,created_at,score,country,city,cpu FROM results ORDER BY created_at DESC LIMIT 20").all();
+      return new Response(renderHome(query.results || []), { headers });
+    }
+    return new Response("Not found", { status: 404 });
   }
 };

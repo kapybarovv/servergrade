@@ -63,17 +63,23 @@
      --data-urlencode 'server_vendor=Supermicro'
    ```
 
-7. Включите публикацию из ServerGrade:
+7. После развёртывания официального API обычному пользователю ничего настраивать
+   не нужно. Runner уже содержит endpoint `https://servergra.de/api/results`:
 
    ```bash
-   SERVERGRADE_PUBLISH_URL=https://servergrade-results.<account>.workers.dev/api/results servergrade
+   bash <(curl -fsSL https://raw.githubusercontent.com/kapybarovv/servergrade/main/servergrade.sh)
    ```
 
 8. Для своего домена откройте Cloudflare Dashboard → **Workers & Pages** →
    **servergrade-results** → **Settings** → **Domains & Routes** → **Add** →
    **Custom Domain** и укажите `servergra.de`. Cloudflare создаст DNS-запись и
    сертификат. После этого используйте
-   `SERVERGRADE_PUBLISH_URL=https://servergra.de/api/results`.
+   `https://servergra.de/api/results`. Для проверки до подключения домена можно
+   временно переопределить endpoint только у владельца проекта:
+
+   ```bash
+   SERVERGRADE_PUBLISH_URL=https://servergrade-results.<account>.workers.dev/api/results servergrade
+   ```
 
 Публикация выполняется `POST /api/results` в формате
 `application/x-www-form-urlencoded`. Endpoint намеренно принимает только
