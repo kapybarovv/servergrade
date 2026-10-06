@@ -1,0 +1,13 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "servergrade-results",
+  "main": "src/index.js",
+  "compatibility_date": "2026-10-01",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "servergrade",
+      "database_id": "REPLACE_AFTER_WRANGLER_D1_CREATE"
+    }
+  ]
+}

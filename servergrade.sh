@@ -4,7 +4,7 @@
 #  ServerGrade — интерактивная диагностика сервера
 # ============================================================
 
-SCRIPT_VERSION="1.1.0"
+SCRIPT_VERSION="1.2.0"
 REPO_URL="https://raw.githubusercontent.com/kapybarovv/servergrade/main/servergrade.sh"
 
 # Цвета
@@ -20,6 +20,9 @@ SUMMARY_DIR=""             # /tmp/multitest-summary-<ts>
 SUMMARY_TS=""
 SCRIPT_CAPTURE="util"      # util | busybox
 MT_UA="Mozilla/5.0 (X11; Linux x86_64) servergrade/${SCRIPT_VERSION}"
+# После развёртывания platform/ задайте адрес API, например:
+# SERVERGRADE_PUBLISH_URL=https://servergra.de/api/results servergrade
+SERVERGRADE_PUBLISH_URL="${SERVERGRADE_PUBLISH_URL:-}"
 
 # Спонсор: подпись в подвале сводки (см. sv_sponsor) и блок в главном меню
 # (см. print_stencloud_promo).
@@ -96,12 +99,30 @@ fi
 
 print_header() {
     clear
-    echo -e "${CYAN}${BOLD}"
-    echo "  ╔══════════════════════════════════════════╗"
-    echo "  ║          SERVERGRADE ${SCRIPT_VERSION}                 ║"
-    echo "  ║   Диагностика и тестирование сервера     ║"
-    echo "  ╚══════════════════════════════════════════╝"
-    echo -e "${NC}"
+    local dim='\033[2m' strong='\033[97m\033[1m' accent='\033[38;5;114m' reset="$NC"
+    [[ ! -t 1 || "${TERM:-}" == "dumb" || -n "${NO_COLOR:-}" ]] && dim='' strong='' accent='' reset=''
+    printf "\n  %b◆%b  %bSERVERGRADE%b  %bv%s%b\n" "$accent" "$reset" "$strong" "$reset" "$dim" "$SCRIPT_VERSION" "$reset"
+    printf "  %bНезависимая диагностика сервера%b\n" "$dim" "$reset"
+    printf "  %b────────────────────────────────────────────────────────%b\n\n" "$dim" "$reset"
+}
+
+menu_item() {
+    local key="$1" title="$2" note="${3:-}" pill_open pill_close dim='\033[2m' reset="$NC"
+    if [[ -t 1 && "${TERM:-}" != "dumb" && -z "${NO_COLOR:-}" ]]; then
+        pill_open='\033[48;5;114m\033[38;5;235m\033[1m'
+        pill_close='\033[0m'
+    else
+        pill_open=''; pill_close=''; dim=''; reset=''
+    fi
+    printf "  %b %2s %b  %s" "$pill_open" "$key" "$pill_close" "$title"
+    [[ -n "$note" ]] && printf "  %b· %s%b" "$dim" "$note" "$reset"
+    printf "\n"
+}
+
+menu_label() {
+    local label="$1" dim='\033[2m' reset="$NC"
+    [[ ! -t 1 || "${TERM:-}" == "dumb" || -n "${NO_COLOR:-}" ]] && dim='' reset=''
+    printf "\n  %b%s%b\n\n" "$dim" "$label" "$reset"
 }
 
 # Блок спонсора для терминала. Строки собираются в массив, а не печатаются на
@@ -1028,6 +1049,39 @@ upload_report() {
     done
     echo -e "${RED}✗ ни один хостинг недоступен${NC}" >&2
     return 1
+}
+
+# Необязательная публикация пользовательского замера. Страница всегда помечает
+# результат как неподтверждённый; сервер принимает только сводные поля и сам
+# определяет буквенный grade из числового score.
+publish_result_page() {
+    local report_url="$1" response page
+    [[ -n "$SERVERGRADE_PUBLISH_URL" ]] || return 0
+    mt_calculate_score
+    response=$(curl -fsS --max-time 20 -X POST \
+        -H 'Content-Type: application/x-www-form-urlencoded' \
+        --data-urlencode "score=$MT_SCORE" \
+        --data-urlencode "network_score=$MT_SCORE_NETWORK" \
+        --data-urlencode "performance_score=$MT_SCORE_PERF" \
+        --data-urlencode "quality_score=$MT_SCORE_QUALITY" \
+        --data-urlencode "coverage=$MT_SCORE_COVERAGE" \
+        --data-urlencode "country=$SYS_COUNTRY" \
+        --data-urlencode "city=$SYS_CITY" \
+        --data-urlencode "cpu=$SYS_CPU" \
+        --data-urlencode "cores=$SYS_CORES" \
+        --data-urlencode "ram=$SYS_RAM" \
+        --data-urlencode "disk=$SYS_DISK" \
+        --data-urlencode "report_url=$report_url" \
+        --data-urlencode "runner_version=$SCRIPT_VERSION" \
+        "$SERVERGRADE_PUBLISH_URL" 2>/dev/null) || {
+            echo -e "  ${YELLOW}Публичная страница не создана: API недоступен.${NC}"
+            return 1
+        }
+    page=$(printf '%s' "$response" | grep -oE '"url"[[:space:]]*:[[:space:]]*"[^"]+"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/')
+    [[ "$page" == https://* ]] || return 1
+    printf '%s' "$page" > "$SUMMARY_DIR/public-url.txt"
+    echo -e "  ${GREEN}${BOLD}Страница замера:${NC} ${BOLD}${page}${NC}"
+    echo -e "  ${YELLOW}Результат помечен как пользовательский и неподтверждённый.${NC}"
 }
 
 # Гарантирует наличие рендерера SVG->PNG (rsvg-convert, иначе ImageMagick).
@@ -2889,6 +2943,7 @@ render_grouped_summary() {
     echo -e "  ${CYAN}Страниц: ${BOLD}${n}${NC}${CYAN} - обзор и категории.${NC}"
     [[ "$life" != "постоянная" ]] && echo -e "  ${YELLOW}Ссылка ${life} - потом альбом удалится с хостинга.${NC}"
     echo -e "  ${YELLOW}Оригиналы лежат тут:${NC} ${BOLD}${dir}${NC}"
+    publish_result_page "$url" || true
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     return 0
 }
@@ -2919,6 +2974,7 @@ render_album_summary() {
     [[ "$life" != "постоянная" ]] && echo -e "  ${YELLOW}Ссылка ${life} — потом альбом удалится с хостинга.${NC}"
     echo -e "  ${YELLOW}Оригиналы лежат тут:${NC} ${BOLD}${dir}${NC}"
     echo -e "    ${YELLOW}например: ${BOLD}scp -r root@<host>:${dir} .${NC}"
+    publish_result_page "$url" || true
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     return 0
 }
@@ -2971,6 +3027,7 @@ render_and_upload_summary() {
         echo -e "  ${YELLOW}Чтобы переслать надёжно/навсегда — ОБЯЗАТЕЛЬНО скачайте сам файл:${NC}"
         echo -e "    ${BOLD}${out}${NC}"
         echo -e "    ${YELLOW}например: ${BOLD}scp root@<host>:${out} .${NC}"
+        publish_result_page "$url" || true
         echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     else
         echo -e "  ${YELLOW}Загрузка не удалась — файл сохранён локально: ${out}${NC}"
@@ -2984,31 +3041,33 @@ render_and_upload_summary() {
 
 show_menu() {
     print_header
-    echo -e "  ${CYAN}${BOLD}── Тесты ──${NC}"
-    echo ""
-    echo -e "  ${GREEN} 1)${NC}  IP Region"
-    echo -e "  ${GREEN} 2)${NC}  Censorcheck — проверка геоблока"
-    echo -e "  ${GREEN} 3)${NC}  Censorcheck — DPI (серверы РФ)"
-    echo -e "  ${GREEN} 4)${NC}  Censorcheck — censorcheck.tlab.pw"
-    echo -e "  ${GREEN} 5)${NC}  iPerf3 — тест до российских серверов"
-    echo -e "  ${GREEN} 6)${NC}  iPerf3 — bench.tlab.pw (РФ)"
-    echo -e "  ${GREEN} 7)${NC}  YABS — бенчмарк сервера"
-    echo -e "  ${GREEN} 8)${NC}  IP Check Place — блокировки зарубежными сервисами"
-    echo -e "  ${GREEN} 9)${NC}  bench.sh — параметры сервера и скорость"
-    echo -e "  ${GREEN}10)${NC}  IPQuality"
-    echo -e "  ${GREEN}11)${NC}  sysbench CPU — тест процессора"
-    echo ""
-    echo -e "  ${YELLOW}12)${NC}  ${BOLD}Мультитест — выбор и запуск тестов${NC}"
-    echo ""
-    echo -e "  ${CYAN}${BOLD}── Утилиты ──${NC}"
-    echo ""
-    echo -e "  ${GREEN}13)${NC}  Утилиты (BBR, IPv6...)"
-    echo ""
-    echo -e "  ${RED} 0)${NC}  Выход"
+    menu_item 12 "Полная диагностика" "рекомендуется"
+
+    menu_label "СЕТЬ И ДОСТУПНОСТЬ"
+    menu_item 1  "Геолокация IP" "IP Region"
+    menu_item 2  "Геоблокировки" "CensorCheck"
+    menu_item 3  "DPI в России" "CensorCheck"
+    menu_item 4  "Доступность сайтов" "TLab"
+    menu_item 5  "Скорость до РФ" "iPerf3"
+    menu_item 6  "Российские маршруты" "TLab iPerf3"
+
+    menu_label "СЕРВЕР И КАЧЕСТВО IP"
+    menu_item 7  "Производительность" "YABS"
+    menu_item 8  "Доступ к сервисам" "IP Check Place"
+    menu_item 9  "Система и сеть" "bench.sh"
+    menu_item 10 "Репутация адреса" "IPQuality"
+    menu_item 11 "Процессор" "sysbench CPU"
+
+    menu_label "СИСТЕМА"
+    menu_item 13 "Настройки сервера" "BBR · IPv6"
+    menu_item 0  "Выйти"
 
     MT_PROMO_BELOW=0
-    echo ""
-    echo -ne "  ${BOLD}Выберите пункт [0-13]: ${NC}"
+    if [[ -t 1 && "${TERM:-}" != "dumb" && -z "${NO_COLOR:-}" ]]; then
+        printf "\n  ${BOLD}Введите номер${NC}  ${CYAN}›${NC} "
+    else
+        printf "\n  Введите номер  > "
+    fi
 }
 
 # ============================================================
