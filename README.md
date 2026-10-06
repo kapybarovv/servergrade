@@ -98,7 +98,8 @@ SaaS-бэкенд публичных пользовательских стран
 bash <(curl -fsSL https://raw.githubusercontent.com/kapybarovv/servergrade/main/servergrade.sh)
 ```
 
-Runner автоматически отправляет сводные измерения на `servergra.de`, получает
+Runner автоматически отправляет сводные измерения на
+`servergrade-results.zontoed.workers.dev`, получает
 адрес `/test/12345678` и печатает его в терминале. Отключить публикацию можно
 командой `SERVERGRADE_PUBLISH=0 servergrade`. Каждая страница предупреждает,
 что результат прислал пользователь и данные могут быть подделаны.

@@ -20,7 +20,7 @@
    ```
 
 3. Скопируйте выданный `database_id` в `wrangler.jsonc`, заменив
-   `REPLACE_AFTER_WRANGLER_D1_CREATE`. Binding должен остаться `DB`.
+   ID базы уже указан в `wrangler.jsonc`. Binding должен остаться `DB`.
 
 4. Создайте таблицу сначала локально и проверьте Worker:
 
@@ -64,7 +64,8 @@
    ```
 
 7. После развёртывания официального API обычному пользователю ничего настраивать
-   не нужно. Runner уже содержит endpoint `https://servergra.de/api/results`:
+   не нужно. Runner уже содержит endpoint
+   `https://servergrade-results.zontoed.workers.dev/api/results`:
 
    ```bash
    bash <(curl -fsSL https://raw.githubusercontent.com/kapybarovv/servergrade/main/servergrade.sh)

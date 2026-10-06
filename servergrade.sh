@@ -23,7 +23,7 @@ MT_UA="Mozilla/5.0 (X11; Linux x86_64) servergrade/${SCRIPT_VERSION}"
 # Официальный SaaS принимает пользовательские замеры автоматически. Отключить
 # публикацию можно явно: SERVERGRADE_PUBLISH=0 servergrade
 SERVERGRADE_PUBLISH="${SERVERGRADE_PUBLISH:-1}"
-SERVERGRADE_PUBLISH_URL="${SERVERGRADE_PUBLISH_URL:-https://servergra.de/api/results}"
+SERVERGRADE_PUBLISH_URL="${SERVERGRADE_PUBLISH_URL:-https://servergrade-results.zontoed.workers.dev/api/results}"
 
 # Спонсор: подпись в подвале сводки (см. sv_sponsor) и блок в главном меню
 # (см. print_stencloud_promo).
@@ -3071,7 +3071,7 @@ render_and_upload_summary() {
 
 show_menu() {
     print_header
-    echo -e "  ${CYAN}Результаты публикуются на servergra.de${NC}"
+    echo -e "  ${CYAN}Результаты публикуются на servergrade-results.zontoed.workers.dev${NC}"
     echo -e "  ${YELLOW}Публикация пользовательская, без подтверждения достоверности.${NC}"
     menu_item 12 "Полная диагностика" "рекомендуется"
 
