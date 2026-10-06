@@ -4,7 +4,7 @@
 #  ServerGrade — интерактивная диагностика сервера
 # ============================================================
 
-SCRIPT_VERSION="1.0.0"
+SCRIPT_VERSION="1.1.0"
 REPO_URL="https://raw.githubusercontent.com/kapybarovv/servergrade/main/servergrade.sh"
 
 # Цвета
@@ -2067,6 +2067,106 @@ mt_run_counters() {
     (( MT_TOT == 0 )) && MT_TOT=1
 }
 
+# ServerGrade Score v1.0. Сначала усредняются сигналы внутри каждого теста,
+# затем тесты внутри категории: десятки сервисов не перевешивают CPU или сеть.
+# Итоговые веса: сеть 30%, производительность 45%, качество IP 25%.
+mt_signal_score() {
+    local label="${1,,}" value="${2,,}" state="$3" n
+    n=$(printf '%s' "$value" | grep -oE '[0-9]+([.,][0-9]+)?' | head -1 | tr ',' '.')
+    case "$label" in
+        *ping*|*lat\ avg*|*lat\ 95*)
+            [[ -z "$n" ]] && { echo 70; return; }
+            awk -v n="$n" 'BEGIN{if(n<=10)print 100;else if(n<=25)print 92;else if(n<=50)print 80;else if(n<=100)print 62;else if(n<=180)print 42;else print 20}'; return ;;
+        *макс*|*mbps*|*скорост*)
+            [[ -z "$n" ]] && { echo 70; return; }
+            awk -v n="$n" 'BEGIN{if(n>=2000)print 100;else if(n>=1000)print 95;else if(n>=500)print 86;else if(n>=200)print 72;else if(n>=100)print 60;else if(n>=50)print 45;else print 25}'; return ;;
+        *gb6\ single*)
+            [[ -z "$n" ]] && { echo 70; return; }
+            awk -v n="$n" 'BEGIN{if(n>=2500)print 100;else if(n>=2000)print 92;else if(n>=1500)print 82;else if(n>=1000)print 68;else if(n>=600)print 48;else print 28}'; return ;;
+        *gb6\ multi*)
+            [[ -z "$n" ]] && { echo 70; return; }
+            awk -v n="$n" 'BEGIN{if(n>=10000)print 100;else if(n>=7000)print 92;else if(n>=4500)print 82;else if(n>=2500)print 68;else if(n>=1200)print 48;else print 28}'; return ;;
+        *fio*|*i/o*)
+            [[ -z "$n" ]] && { echo 70; return; }
+            printf '%s' "$value" | grep -qi 'gb/s' && n=$(awk -v n="$n" 'BEGIN{print n*1024}')
+            awk -v n="$n" 'BEGIN{if(n>=1500)print 100;else if(n>=800)print 92;else if(n>=400)print 82;else if(n>=200)print 68;else if(n>=100)print 52;else print 30}'; return ;;
+        *events/s*)
+            [[ -z "$n" ]] && { echo 70; return; }
+            awk -v n="$n" 'BEGIN{if(n>=10000)print 100;else if(n>=5000)print 90;else if(n>=2500)print 78;else if(n>=1000)print 62;else if(n>=500)print 45;else print 25}'; return ;;
+        *риск*)
+            case "$value" in *verylow*|*low*) echo 100;; *medium*) echo 60;; *high*) echo 15;; *) echo 70;; esac; return ;;
+        *dnsbl*) [[ "$n" == "0" ]] && echo 100 || echo 20; return ;;
+    esac
+    case "$state" in ok) echo 100;; pri) echo 85;; warn) echo 55;; bad) echo 10;; *) echo 72;; esac
+}
+
+mt_test_score() {
+    local fn="$1" st="${MT_STATUS[$fn]:-}" mfile="$SUMMARY_DIR/$fn.metrics" sfile="$SUMMARY_DIR/$fn.services"
+    [[ "$st" == "выполнен" ]] || { echo -1; return; }
+    local sum=0 count=0 label value state score svc_sum=0 svc_count=0 kind slug frac
+    if [[ -s "$mfile" ]]; then
+        while IFS=$'\x1f' read -r label value state; do
+            [[ -z "$label" ]] && continue
+            score=$(mt_signal_score "$label" "$value" "$state")
+            sum=$((sum+score)); count=$((count+1))
+        done < "$mfile"
+    fi
+    if [[ -s "$sfile" ]]; then
+        while IFS=$'\x1f' read -r kind label slug state value frac; do
+            [[ "$kind" == "sep" || "$state" == "na" || -z "$state" ]] && continue
+            case "$state" in ok) score=100;; warn) score=55;; bad) score=10;; *) continue;; esac
+            svc_sum=$((svc_sum+score)); svc_count=$((svc_count+1))
+        done < "$sfile"
+        # Все сервисы одного теста дают ровно один сигнал.
+        if (( svc_count > 0 )); then sum=$((sum + svc_sum/svc_count)); count=$((count+1)); fi
+    fi
+    (( count > 0 )) && echo $((sum/count)) || echo 60
+}
+
+mt_category_score() {
+    local members="$1" idx fn score sum=0 count=0
+    for idx in $members; do
+        fn="${MT_CAT_FUNCS[$idx]}"; score=$(mt_test_score "$fn")
+        (( score >= 0 )) || continue
+        sum=$((sum+score)); count=$((count+1))
+    done
+    (( count > 0 )) && echo "$((sum/count)) $count" || echo "0 0"
+}
+
+mt_calculate_score() {
+    local nc pc qc
+    read -r MT_SCORE_NETWORK nc <<< "$(mt_category_score '0 1 2 3')"
+    read -r MT_SCORE_PERF pc <<< "$(mt_category_score '4 5 6 8 10')"
+    read -r MT_SCORE_QUALITY qc <<< "$(mt_category_score '7 9')"
+    local weighted=0 weights=0
+    (( nc > 0 )) && { weighted=$((weighted + MT_SCORE_NETWORK*30)); weights=$((weights+30)); }
+    (( pc > 0 )) && { weighted=$((weighted + MT_SCORE_PERF*45)); weights=$((weights+45)); }
+    (( qc > 0 )) && { weighted=$((weighted + MT_SCORE_QUALITY*25)); weights=$((weights+25)); }
+    (( weights > 0 )) && MT_SCORE=$(((weighted + weights/2)/weights)) || MT_SCORE=0
+    local catalog=${#MT_CAT_FUNCS[@]}; (( catalog < 1 )) && catalog=1
+    MT_SCORE_COVERAGE=$((MT_DONE*100/catalog))
+    if (( MT_DONE == catalog && MT_ERR == 0 && MT_SKIP == 0 )); then MT_SCORE_STATE="ПОЛНЫЙ ПРОГОН"
+    else MT_SCORE_STATE="ПРЕДВАРИТЕЛЬНО · ПОКРЫТИЕ ${MT_SCORE_COVERAGE}%"; fi
+    case "$MT_SCORE" in 9[0-9]|100) MT_SCORE_GRADE="A";; 8[0-9]) MT_SCORE_GRADE="B";; 7[0-9]) MT_SCORE_GRADE="C";; 6[0-9]) MT_SCORE_GRADE="D";; *) MT_SCORE_GRADE="E";; esac
+}
+
+sv_score_card() {
+    local Y="$1"; mt_calculate_score
+    sv "<rect x=\"$PAD\" y=\"$Y\" width=\"$CARDW\" height=\"116\" rx=\"16\" fill=\"$C_SC\" stroke=\"$C_LINE\"/>"
+    sv "<text x=\"$((PAD+26))\" y=\"$((Y+31))\" fill=\"$C_TXT3\" font-size=\"10.5\" letter-spacing=\"1.4\">SERVERGRADE SCORE · V1.0</text>"
+    sv "<text x=\"$((PAD+26))\" y=\"$((Y+83))\" fill=\"$C_ACC\" font-family=\"$F_DISPLAY\" font-size=\"48\" font-weight=\"700\">$MT_SCORE</text>"
+    sv "<text x=\"$((PAD+112))\" y=\"$((Y+80))\" fill=\"$C_TXT3\" font-size=\"17\">/ 100 · $MT_SCORE_GRADE</text>"
+    local x=$((PAD+430)) label val
+    for label in СЕТЬ ПРОИЗВОДИТЕЛЬНОСТЬ КАЧЕСТВО; do
+        case "$label" in СЕТЬ) val=$MT_SCORE_NETWORK;; ПРОИЗВОДИТЕЛЬНОСТЬ) val=$MT_SCORE_PERF;; *) val=$MT_SCORE_QUALITY;; esac
+        sv "<text x=\"$x\" y=\"$((Y+40))\" fill=\"$C_TXT3\" font-size=\"9.5\" letter-spacing=\".8\">$label</text>"
+        sv "<text x=\"$x\" y=\"$((Y+72))\" fill=\"$C_TXT\" font-family=\"$F_UI\" font-size=\"23\" font-weight=\"700\">$val</text>"
+        x=$((x+190))
+    done
+    sv "<text x=\"$((PAD+CARDW-24))\" y=\"$((Y+101))\" text-anchor=\"end\" fill=\"$C_TXT3\" font-size=\"9.5\" letter-spacing=\".8\">$MT_SCORE_STATE</text>"
+    MT_Y=$((Y+134))
+}
+
 # Строка идентификации сервера: замаскированные адреса, гео, дата.
 # Она нужна на КАЖДОЙ странице альбома: из альбома пересылают по одной картинке,
 # и страница без неё уезжает в чужой чат как результат неизвестно чьего сервера.
@@ -2420,6 +2520,7 @@ HEAD
 build_page_cover() {
     SVG_BODY=""
     sv_head_full "$PAD"
+    sv_score_card "$MT_Y"
     sv_card_server "$MT_Y"
     sv_card_toc "$MT_Y"
     sv_offnames "$MT_Y"
@@ -2470,6 +2571,7 @@ sv_group_tile() {
 build_page_overview() {
     SVG_BODY=""
     sv_head_category "$PAD" "Диагностика сервера" "Характеристики системы и состояние выбранных проверок"
+    sv_score_card "$MT_Y"
     sv_card_server "$MT_Y"
     local Y=$MT_Y gap=10
     sv_group_tile "$PAD" "$Y" "$CARDW" "Сеть и доступность" "геолокация, маршруты и DPI" "0 1 2 3" globe
