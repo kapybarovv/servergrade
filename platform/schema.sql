@@ -120,3 +120,47 @@ CREATE TABLE IF NOT EXISTS secure_upload_tokens (
   uploaded_count INTEGER NOT NULL DEFAULT 0,
   FOREIGN KEY (result_id) REFERENCES results(id) ON DELETE CASCADE
 );
+
+-- Synthetic fixtures make a fresh installation useful for layout/testing.
+-- They are explicitly marked DEMO, excluded from production counters/rankings,
+-- and use a reserved 91xxxxxx ID range so they can be removed safely.
+WITH RECURSIVE demo(n) AS (
+  SELECT 1 UNION ALL SELECT n + 1 FROM demo WHERE n < 56
+)
+INSERT OR IGNORE INTO results(
+  id,created_at,score,grade,network_score,performance_score,quality_score,coverage,
+  country,city,cpu,cores,ram,ram_type,disk,disk_type,disk_model,server_vendor,
+  report_url,runner_version
+)
+SELECT
+  printf('91%06d',n),datetime('now','-' || (n % 45) || ' days'),
+  55 + ((n * 7) % 44),
+  CASE WHEN 55 + ((n * 7) % 44) >= 90 THEN 'A' WHEN 55 + ((n * 7) % 44) >= 80 THEN 'B' WHEN 55 + ((n * 7) % 44) >= 70 THEN 'C' WHEN 55 + ((n * 7) % 44) >= 60 THEN 'D' ELSE 'E' END,
+  50 + ((n * 11) % 49),55 + ((n * 13) % 44),45 + ((n * 17) % 54),100,
+  CASE n % 8 WHEN 0 THEN 'NL' WHEN 1 THEN 'DE' WHEN 2 THEN 'FI' WHEN 3 THEN 'FR' WHEN 4 THEN 'PL' WHEN 5 THEN 'SE' WHEN 6 THEN 'GB' ELSE 'US' END,
+  CASE n % 8 WHEN 0 THEN 'Amsterdam' WHEN 1 THEN 'Frankfurt' WHEN 2 THEN 'Helsinki' WHEN 3 THEN 'Paris' WHEN 4 THEN 'Warsaw' WHEN 5 THEN 'Stockholm' WHEN 6 THEN 'London' ELSE 'New York' END,
+  CASE n % 6 WHEN 0 THEN 'AMD EPYC 7B13' WHEN 1 THEN 'AMD EPYC 7763' WHEN 2 THEN 'Intel Xeon Gold 6230' WHEN 3 THEN 'AMD EPYC 7502P' WHEN 4 THEN 'Intel Xeon E5-2697 v4' ELSE 'AMD EPYC 9454P' END,
+  CAST(1 << (n % 5) AS TEXT),printf('%d GiB',1 << ((n % 5) + 1)),CASE WHEN n % 4 = 0 THEN 'DDR5' ELSE 'DDR4' END,
+  printf('%d GiB',40 + (n % 8) * 40),CASE WHEN n % 5 = 0 THEN 'SSD' ELSE 'NVMe SSD' END,
+  CASE WHEN n % 5 = 0 THEN 'Virtual SSD' ELSE 'Virtual NVMe' END,
+  CASE n % 10 WHEN 0 THEN 'Hetzner' WHEN 1 THEN 'OVHcloud' WHEN 2 THEN 'Vultr' WHEN 3 THEN 'DigitalOcean' WHEN 4 THEN 'Akamai Linode' WHEN 5 THEN 'Contabo' WHEN 6 THEN 'Netcup' WHEN 7 THEN 'Scaleway' WHEN 8 THEN 'Leaseweb' ELSE 'UpCloud' END,
+  '','demo-fixture'
+FROM demo;
+
+WITH RECURSIVE demo(n) AS (
+  SELECT 1 UNION ALL SELECT n + 1 FROM demo WHERE n < 56
+)
+INSERT OR IGNORE INTO result_details(
+  result_id,asn,os,kernel,arch,virtualization,congestion_control,qdisc,uptime,
+  load_avg,has_ipv4,has_ipv6,test_statuses,metrics,services
+)
+SELECT printf('91%06d',n),'DEMO ASN','Debian 12','6.1.x','x86_64','KVM','bbr','fq','demo','0.00',1,1,'','','' FROM demo;
+
+WITH RECURSIVE demo(n) AS (
+  SELECT 1 UNION ALL SELECT n + 1 FROM demo WHERE n < 56
+)
+INSERT OR IGNORE INTO result_security(
+  result_id,verified,verification_level,challenge_id,signature,source_ip_hash,
+  edge_country,edge_asn,edge_org,edge_rtt_ms,edge_colo,external_probe_status,immutable_at
+)
+SELECT printf('91%06d',n),0,'demo',NULL,printf('demo-fixture-%02d',n),'demo','—',NULL,'—',NULL,'—','not-run',datetime('now') FROM demo;
