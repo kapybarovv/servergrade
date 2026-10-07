@@ -42,3 +42,19 @@ CREATE TABLE IF NOT EXISTS result_details (
   services TEXT NOT NULL,
   FOREIGN KEY (result_id) REFERENCES results(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS result_upload_tokens (
+  result_id TEXT PRIMARY KEY,
+  token TEXT NOT NULL,
+  FOREIGN KEY (result_id) REFERENCES results(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS result_assets (
+  result_id TEXT NOT NULL,
+  position INTEGER NOT NULL,
+  name TEXT NOT NULL,
+  mime TEXT NOT NULL DEFAULT 'image/svg+xml',
+  data TEXT NOT NULL,
+  PRIMARY KEY (result_id, position),
+  FOREIGN KEY (result_id) REFERENCES results(id) ON DELETE CASCADE
+);

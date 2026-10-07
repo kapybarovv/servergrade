@@ -1126,11 +1126,10 @@ upload_report() {
     return 1
 }
 
-# Необязательная публикация пользовательского замера. Страница всегда помечает
-# результат как неподтверждённый; сервер принимает только сводные поля и сам
-# определяет буквенный grade из числового score.
+# Публикация замера: сервер принимает сводные поля, сам определяет буквенную
+# оценку и возвращает одноразовый токен для загрузки страниц отчёта.
 publish_result_page() {
-    local report_url="$1" response page metrics_blob="" services_blob="" statuses_blob="" fn line idx name st
+    local report_url="${1:-}" response page id token metrics_blob="" services_blob="" statuses_blob="" fn line idx name st
     [[ "$SERVERGRADE_PUBLISH" == "1" && -n "$SERVERGRADE_PUBLISH_URL" ]] || return 0
     mt_calculate_score
     for idx in "${!MT_CAT_FUNCS[@]}"; do
@@ -1183,10 +1182,31 @@ publish_result_page() {
             return 1
         }
     page=$(printf '%s' "$response" | grep -oE '"url"[[:space:]]*:[[:space:]]*"[^"]+"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/')
+    id=$(printf '%s' "$response" | grep -oE '"id"[[:space:]]*:[[:space:]]*"[0-9]+"' | head -1 | grep -oE '[0-9]+')
+    token=$(printf '%s' "$response" | grep -oE '"upload_token"[[:space:]]*:[[:space:]]*"[a-f0-9]+"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/')
     [[ "$page" == https://* ]] || return 1
     printf '%s' "$page" > "$SUMMARY_DIR/public-url.txt"
-    echo -e "  ${GREEN}${BOLD}Страница замера:${NC} ${BOLD}${page}${NC}"
-    echo -e "  ${YELLOW}Результат помечен как пользовательский и неподтверждённый.${NC}"
+    printf '%s' "$id" > "$SUMMARY_DIR/public-id.txt"
+    printf '%s' "$token" > "$SUMMARY_DIR/upload-token.txt"
+    echo -e "  ${GREEN}${BOLD}Результаты загружены:${NC} ${BOLD}${page}${NC}"
+}
+
+upload_result_assets() {
+    local id token endpoint file svg name pos=0
+    id=$(cat "$SUMMARY_DIR/public-id.txt" 2>/dev/null); token=$(cat "$SUMMARY_DIR/upload-token.txt" 2>/dev/null)
+    [[ "$id" =~ ^[0-9]{8}$ && -n "$token" ]] || return 1
+    endpoint="${SERVERGRADE_PUBLISH_URL%/api/results}/api/results/${id}/assets"
+    while IFS= read -r file; do
+        [[ -s "$file" ]] || continue
+        [[ "$file" == *.png ]] && file="${file%.png}.svg"
+        [[ -s "$file" ]] || continue
+        pos=$((pos+1)); (( pos <= 8 )) || break
+        svg=$(cat "$file"); name=$(basename "$file" .svg); name=${name#??-}; name=${name//-/ }
+        curl -fsS --max-time 45 -X POST -H 'Content-Type: application/x-www-form-urlencoded' \
+            --data-urlencode "token=$token" --data-urlencode "position=$pos" \
+            --data-urlencode "name=$name" --data-urlencode "svg=$svg" "$endpoint" >/dev/null || return 1
+    done < "$SUMMARY_DIR/pages.list"
+    (( pos > 0 ))
 }
 
 # Гарантирует наличие рендерера SVG->PNG (rsvg-convert, иначе ImageMagick).
@@ -3011,12 +3031,11 @@ step_build_grouped_pages() {
 }
 
 step_upload_album() {
-    local -a files=(); local f url
-    while IFS= read -r f; do [[ -s "$f" ]] && files+=( "$f" ); done < "$SUMMARY_DIR/pages.list"
-    (( ${#files[@]} > 0 )) || return 1
-    url=$(up_imgdb_album "${files[@]}") || return 1
-    [[ "$url" == https://* ]] || return 1
-    printf '%s' "$url" > "$SUMMARY_DIR/url.txt"
+    [[ -s "$SUMMARY_DIR/pages.list" ]] || return 1
+    gather_system_facts
+    publish_result_page "" || return 1
+    upload_result_assets || return 1
+    cp "$SUMMARY_DIR/public-url.txt" "$SUMMARY_DIR/url.txt"
 }
 
 # Русское склонение числительных: 1 день / 2 дня / 5 дней.
@@ -3059,21 +3078,19 @@ render_grouped_summary() {
         echo -e "  ${YELLOW}Категорийные страницы не собрались - соберу одной картинкой.${NC}"
         return 1
     fi
-    if ! spin_run "Загружаю альбом на imgdb" step_upload_album; then
-        echo -e "  ${YELLOW}Альбом не загрузился - соберу одной картинкой.${NC}"
+    if ! spin_run "Загружаю результат на ServerGrade" step_upload_album; then
+        echo -e "  ${YELLOW}Результат не загрузился - соберу одной картинкой.${NC}"
         return 1
     fi
 
-    local url dir="$SUMMARY_DIR/pages" life n
-    url=$(cat "$SUMMARY_DIR/url.txt"); life=$(imgdb_life)
+    local url dir="$SUMMARY_DIR/pages" n
+    url=$(cat "$SUMMARY_DIR/url.txt")
     n=$(wc -l < "$SUMMARY_DIR/pages.list" | tr -d ' ')
     echo ""
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "  ${BOLD}${GREEN}Альбом со сводкой:${NC} ${BOLD}${url}${NC}"
+    echo -e "  ${BOLD}${GREEN}Результаты загружены:${NC} ${BOLD}${url}${NC}"
     echo -e "  ${CYAN}Страниц: ${BOLD}${n}${NC}${CYAN} - обзор и категории.${NC}"
-    [[ "$life" != "постоянная" ]] && echo -e "  ${YELLOW}Ссылка ${life} - потом альбом удалится с хостинга.${NC}"
     echo -e "  ${YELLOW}Оригиналы лежат тут:${NC} ${BOLD}${dir}${NC}"
-    publish_result_page "$url" || true
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     return 0
 }
@@ -3089,22 +3106,19 @@ render_album_summary() {
         echo -e "  ${YELLOW}Страницы не собрались — соберу одной картинкой.${NC}"
         return 1
     fi
-    if ! spin_run "Загружаю альбом на imgdb" step_upload_album; then
-        echo -e "  ${YELLOW}Альбом не загрузился — соберу одной картинкой.${NC}"
+    if ! spin_run "Загружаю результат на ServerGrade" step_upload_album; then
+        echo -e "  ${YELLOW}Результат не загрузился — соберу одной картинкой.${NC}"
         return 1
     fi
 
-    local url dir="$SUMMARY_DIR/pages" life
-    url=$(cat "$SUMMARY_DIR/url.txt"); life=$(imgdb_life)
+    local url dir="$SUMMARY_DIR/pages"
+    url=$(cat "$SUMMARY_DIR/url.txt")
     echo ""
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "  ${BOLD}${GREEN}Альбом со сводкой:${NC} ${BOLD}${url}${NC}"
+    echo -e "  ${BOLD}${GREEN}Результаты загружены:${NC} ${BOLD}${url}${NC}"
     echo -e "  ${CYAN}Страниц: ${BOLD}${n}${NC}${CYAN} — обложка и по одной на тест.${NC}"
-    # про постоянную ссылку молчим: строка была нужна, только пока срок конечный
-    [[ "$life" != "постоянная" ]] && echo -e "  ${YELLOW}Ссылка ${life} — потом альбом удалится с хостинга.${NC}"
     echo -e "  ${YELLOW}Оригиналы лежат тут:${NC} ${BOLD}${dir}${NC}"
     echo -e "    ${YELLOW}например: ${BOLD}scp -r root@<host>:${dir} .${NC}"
-    publish_result_page "$url" || true
     echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     return 0
 }
@@ -3138,29 +3152,17 @@ render_and_upload_summary() {
     [[ -n "$out" ]] || out="$SUMMARY_DIR/summary.svg"
 
     echo -e "  Локально: ${BOLD}${out}${NC}"
+    printf '%s\n' "$SUMMARY_DIR/summary.svg" > "$SUMMARY_DIR/pages.list"
 
-    if spin_run "Загружаю на хостинг" step_upload; then
-        local url life="временная"
+    if spin_run "Загружаю результат на ServerGrade" step_upload_album; then
+        local url
         url=$(cat "$SUMMARY_DIR/url.txt")
-        case "$url" in
-            *imgdb.io*)          life=$(imgdb_life) ;;
-            *x0.at*)             life="≈100 дней" ;;
-            *files.catbox.moe*)  life="постоянная" ;;
-            *litter.catbox.moe*) life="до 72 часов" ;;
-            *uguu.se*)           life="3 часа" ;;
-            *tmpfiles.org*)      life="1 час" ;;
-        esac
         echo ""
         echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-        echo -e "  ${BOLD}${GREEN}Ссылка на сводку:${NC} ${BOLD}${url}${NC}"
-        [[ "$life" != "постоянная" ]] && echo -e "  ${YELLOW}Ссылка ${life} — потом файл удалится с хостинга.${NC}"
-        echo -e "  ${YELLOW}Чтобы переслать надёжно/навсегда — ОБЯЗАТЕЛЬНО скачайте сам файл:${NC}"
-        echo -e "    ${BOLD}${out}${NC}"
-        echo -e "    ${YELLOW}например: ${BOLD}scp root@<host>:${out} .${NC}"
-        publish_result_page "$url" || true
+        echo -e "  ${BOLD}${GREEN}Результаты загружены:${NC} ${BOLD}${url}${NC}"
         echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
     else
-        echo -e "  ${YELLOW}Загрузка не удалась — файл сохранён локально: ${out}${NC}"
+        echo -e "  ${YELLOW}Загрузка не удалась — результат сохранён локально: ${out}${NC}"
         echo -e "  ${YELLOW}Скопируйте: scp root@<host>:${out} .${NC}"
     fi
 }
