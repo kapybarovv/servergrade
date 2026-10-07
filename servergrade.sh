@@ -4,7 +4,7 @@
 #  ServerGrade — интерактивная диагностика сервера
 # ============================================================
 
-SCRIPT_VERSION="1.3.1"
+SCRIPT_VERSION="1.4.0"
 REPO_URL="https://raw.githubusercontent.com/kapybarovv/servergrade/main/servergrade.sh"
 
 # Цвета
@@ -102,9 +102,8 @@ print_header() {
     clear
     local dim='\033[2m' strong='\033[97m\033[1m' accent='\033[38;5;114m' reset="$NC"
     [[ ! -t 1 || "${TERM:-}" == "dumb" || -n "${NO_COLOR:-}" ]] && dim='' strong='' accent='' reset=''
-    printf "\n  %b◆%b  %bSERVERGRADE%b  %bv%s%b\n" "$accent" "$reset" "$strong" "$reset" "$dim" "$SCRIPT_VERSION" "$reset"
-    printf "  %bНезависимая диагностика сервера%b\n" "$dim" "$reset"
-    printf "  %b────────────────────────────────────────────────────────%b\n\n" "$dim" "$reset"
+    printf "\n  %bservergrade%b %bv%s%b\n" "$strong" "$reset" "$dim" "$SCRIPT_VERSION" "$reset"
+    printf "  %bдиагностика сервера%b\n\n" "$dim" "$reset"
 }
 
 menu_item() {
@@ -168,11 +167,8 @@ print_stencloud_promo() {
 }
 
 print_separator() {
-    echo ""
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "${BOLD}  >>> $1${NC}"
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo ""
+    printf "\n  ${BOLD}%s${NC}\n" "$1"
+    printf "  ${CYAN}────────────────────────────────────────────────────────${NC}\n\n"
 }
 
 pause_prompt() {
@@ -206,14 +202,22 @@ install_package() {
     local pm
     pm=$(detect_pkg_manager)
 
+    local elevate=()
+    if [[ "$(id -u)" -ne 0 ]]; then
+        if command -v sudo &>/dev/null; then elevate=(sudo); else
+            echo -e "${RED}Для установки ${pkg} нужны root-права или sudo.${NC}"
+            return 1
+        fi
+    fi
+
     echo -e "${YELLOW}Устанавливаю ${pkg}...${NC}"
 
     case "$pm" in
-        apt)     DEBIAN_FRONTEND=noninteractive apt-get update -qq && DEBIAN_FRONTEND=noninteractive apt-get install -y "$pkg" ;;
-        dnf)     dnf install -y -q "$pkg" ;;
-        yum)     yum install -y -q "$pkg" ;;
-        apk)     apk add --quiet "$pkg" ;;
-        pacman)  pacman -S --noconfirm --quiet "$pkg" ;;
+        apt)     "${elevate[@]}" apt-get update -qq && "${elevate[@]}" env DEBIAN_FRONTEND=noninteractive apt-get install -y "$pkg" ;;
+        dnf)     "${elevate[@]}" dnf install -y -q "$pkg" ;;
+        yum)     "${elevate[@]}" yum install -y -q "$pkg" ;;
+        apk)     "${elevate[@]}" apk add --quiet "$pkg" ;;
+        pacman)  "${elevate[@]}" pacman -S --noconfirm --quiet "$pkg" ;;
         *)
             echo -e "${RED}Не удалось определить пакетный менеджер. Установите ${pkg} вручную.${NC}"
             return 1
@@ -255,7 +259,7 @@ test_deps() {
 # Чего не хватает для перечисленных тестов (список команд через пробел, без повторов).
 # curl в базе всегда: на нём держится сама сводка — гео, аплоад картинки, шрифты.
 missing_deps_for() {
-    local fn d; local -a want=( curl ) out=()
+    local fn d; local -a want=( curl script ) out=()
     for fn in "$@"; do
         for d in $(test_deps "$fn"); do
             [[ " ${want[*]} " == *" $d "* ]] || want+=( "$d" )
@@ -271,7 +275,7 @@ missing_deps_for() {
 # curl+wget+iperf3+sysbench — то есть sysbench приезжал на сервер, даже если из
 # всего мультитеста выбрали одну проверку блокировок.
 install_deps_for() {
-    local miss d
+    local miss d failed=0
     miss=$(missing_deps_for "$@")
     if [[ -z "$miss" ]]; then
         echo -e "${GREEN}Зависимости на месте — ставить нечего.${NC}"
@@ -279,8 +283,14 @@ install_deps_for() {
         return 0
     fi
     echo -e "${CYAN}Ставлю недостающее для выбранных тестов: ${BOLD}${miss}${NC}"
-    for d in $miss; do check_and_install "$d"; done
+    for d in $miss; do
+        case "$d" in
+            script) check_and_install script util-linux || failed=1 ;;
+            *)      check_and_install "$d" || failed=1 ;;
+        esac
+    done
     echo ""
+    (( failed == 0 )) || { echo -e "${RED}Не все зависимости удалось установить.${NC}"; return 1; }
 }
 
 # ============================================================
@@ -362,15 +372,60 @@ run_sysbench_cpu() {
 }
 
 MULTITEST_SKIPPED=0
+MT_ACTIVE_PID=""
 
 multitest_skip_handler() {
     MULTITEST_SKIPPED=1
+    [[ -n "$MT_ACTIVE_PID" ]] && kill "$MT_ACTIVE_PID" 2>/dev/null || true
 }
 
 # Секунды -> «≈40 c» / «≈12 мин».
 fmt_eta() {
     local v=$1
-    if (( v < 90 )); then printf '≈%d c' "$v"; else printf '≈%d мин' $(( (v + 30) / 60 )); fi
+    if (( v < 90 )); then printf '≈%d с' "$v"; else printf '≈%d мин' $(( (v + 30) / 60 )); fi
+}
+
+# Единая строка состояния мультитеста. Прогресс взвешен по ожидаемой
+# длительности этапов, поэтому короткая геопроверка и долгий YABS не выглядят
+# одинаковыми. После 95% текущего этапа шкала ждёт реального завершения.
+mt_progress_line() {
+    local title="$1" elapsed="$2" expected="$3" done_weight="$4" total_weight="$5"
+    local current=$elapsed pct eta fill empty bar width=28
+    (( current > expected * 95 / 100 )) && current=$(( expected * 95 / 100 ))
+    pct=$(( (done_weight + current) * 100 / total_weight ))
+    (( pct > 99 )) && pct=99
+    eta=$(( total_weight - done_weight - elapsed )); (( eta < 0 )) && eta=0
+    fill=$(( pct * width / 100 )); empty=$(( width - fill ))
+    printf -v bar '%*s' "$fill" ''; bar=${bar// /━}
+    printf -v _rest '%*s' "$empty" ''; _rest=${_rest// /─}
+    printf '\r\033[K  %b%s%b%s  %3d%%  %-24s  ETA %s' "$GREEN" "$bar" "$NC" "$_rest" "$pct" "$(vcut "$title" 24)" "$(fmt_eta "$eta")"
+}
+
+run_test_with_progress() {
+    local fn="$1" logfile="$2" title="$3" expected="$4" done_weight="$5" total_weight="$6"
+    local started=$SECONDS rc live="${logfile}.runner"
+    if [[ ! -t 1 || "${TERM:-}" == "dumb" ]]; then
+        capture_test "$fn" "$logfile"
+        return $?
+    fi
+
+    capture_test "$fn" "$logfile" >"$live" 2>&1 &
+    MT_ACTIVE_PID=$!
+    printf '\033[?25l'
+    while kill -0 "$MT_ACTIVE_PID" 2>/dev/null; do
+        mt_progress_line "$title" "$((SECONDS-started))" "$expected" "$done_weight" "$total_weight"
+        sleep .18
+    done
+    wait "$MT_ACTIVE_PID"; rc=$?
+    MT_ACTIVE_PID=""
+    printf '\r\033[K\033[?25h'
+    if (( rc == 0 )); then
+        printf "  ${GREEN}✓${NC} %s  ${YELLOW}%s${NC}\n" "$title" "$(fmt_eta "$((SECONDS-started))")"
+    elif (( MULTITEST_SKIPPED == 0 )); then
+        printf "  ${RED}×${NC} %s — тест завершился с ошибкой\n" "$title"
+    fi
+    rm -f "$live"
+    return $rc
 }
 
 # Дополняет строку пробелами до нужной ШИРИНЫ В СИМВОЛАХ. printf %-Ns тут не
@@ -530,10 +585,12 @@ run_all() {
     # --- Список выбранных тестов (глобальные массивы для сводки) ---
     test_funcs=()
     test_names=()
+    test_secs=()
     for k in $(seq 0 $((catalog_total - 1))); do
         [[ "${MT_SEL[$k]}" == "1" ]] || continue
         test_funcs+=( "${all_funcs[$k]}" )
         test_names+=( "${all_names[$k]}" )
+        test_secs+=( "${all_secs[$k]}" )
     done
 
     print_separator "МУЛЬТИТЕСТ — запуск (${#test_funcs[@]} тест(ов))"
@@ -544,7 +601,7 @@ run_all() {
     echo -e "  ${YELLOW}Ctrl+C${NC} во время теста — пропустить текущий"
     echo -e "  Тесты идут автоматически; нажмите любую клавишу, чтобы выбрать вручную."
     echo ""
-    install_deps_for "${test_funcs[@]}"
+    install_deps_for "${test_funcs[@]}" || return 1
 
     # Каталог + статусы для сводки (в картинке показываем и невыбранные тесты)
     MT_CAT_FUNCS=( "${all_funcs[@]}" )
@@ -564,7 +621,8 @@ run_all() {
     detect_script_flavor
 
     local total=${#test_funcs[@]}
-    local i
+    local i total_weight=0 done_weight=0
+    for i in "${test_secs[@]}"; do total_weight=$((total_weight+i)); done
 
     for i in $(seq 0 $((total - 1))); do
         local num=$((i + 1))
@@ -573,9 +631,7 @@ run_all() {
         test_log[$i]="$SUMMARY_DIR/test-${num}.log"
 
         echo ""
-        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-        echo -e "  ${CYAN}[${num}/${total}]${NC} Следующий: ${BOLD}${test_names[$i]}${NC}"
-        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        echo -e "  ${CYAN}${num}/${total}${NC}  ${BOLD}${test_names[$i]}${NC}  ${YELLOW}$(fmt_eta "${test_secs[$i]}")${NC}"
 
         # --- Автостарт через 5 c, любая клавиша → ручной выбор ---
         local action="" _key=""
@@ -605,7 +661,8 @@ run_all() {
         # Запуск теста в подоболочке с захватом вывода, Ctrl+C убивает только тест
         MULTITEST_SKIPPED=0
         trap multitest_skip_handler INT
-        ( capture_test "${test_funcs[$i]}" "${test_log[$i]}" )
+        run_test_with_progress "${test_funcs[$i]}" "${test_log[$i]}" "${test_names[$i]}" \
+            "${test_secs[$i]}" "$done_weight" "$total_weight"
         trap - INT
 
         if [[ $MULTITEST_SKIPPED -eq 1 ]]; then
@@ -619,6 +676,7 @@ run_all() {
                 "$SUMMARY_DIR/${test_funcs[$i]}.metrics" "$SUMMARY_DIR/${test_funcs[$i]}.services"
         fi
         MT_STATUS["${test_funcs[$i]}"]="${test_status[$i]}"
+        done_weight=$((done_weight + test_secs[i]))
     done
 
     echo ""
@@ -3097,8 +3155,6 @@ render_and_upload_summary() {
 
 show_menu() {
     print_header
-    echo -e "  ${CYAN}Результаты публикуются на servergrade-results.kapybarovv.workers.dev${NC}"
-    echo -e "  ${YELLOW}Публикация пользовательская, без подтверждения достоверности.${NC}"
     menu_item 12 "Полная диагностика" "рекомендуется"
 
     menu_label "СЕТЬ И ДОСТУПНОСТЬ"
