@@ -58,3 +58,11 @@ CREATE TABLE IF NOT EXISTS result_assets (
   PRIMARY KEY (result_id, position),
   FOREIGN KEY (result_id) REFERENCES results(id) ON DELETE CASCADE
 );
+
+CREATE TABLE IF NOT EXISTS active_runs (
+  id TEXT PRIMARY KEY,
+  started_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS active_runs_updated_at ON active_runs(updated_at);

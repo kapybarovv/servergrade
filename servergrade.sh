@@ -4,7 +4,7 @@
 #  ServerGrade — интерактивная диагностика сервера
 # ============================================================
 
-SCRIPT_VERSION="1.4.1"
+SCRIPT_VERSION="1.5.0"
 REPO_URL="https://raw.githubusercontent.com/kapybarovv/servergrade/main/servergrade.sh"
 
 # Цвета
@@ -24,6 +24,7 @@ MT_UA="Mozilla/5.0 (X11; Linux x86_64) servergrade/${SCRIPT_VERSION}"
 # публикацию можно явно: SERVERGRADE_PUBLISH=0 servergrade
 SERVERGRADE_PUBLISH="${SERVERGRADE_PUBLISH:-1}"
 SERVERGRADE_PUBLISH_URL="${SERVERGRADE_PUBLISH_URL:-https://servergrade-results.kapybarovv.workers.dev/api/results}"
+MT_RUN_ID=""
 
 # Спонсор: подпись в подвале сводки (см. sv_sponsor) и блок в главном меню
 # (см. print_stencloud_promo).
@@ -420,6 +421,27 @@ multitest_skip_handler() {
     [[ -n "$MT_ACTIVE_PID" ]] && kill "$MT_ACTIVE_PID" 2>/dev/null || true
 }
 
+mt_run_activity() {
+    local action="$1" endpoint
+    [[ "$SERVERGRADE_PUBLISH" == "1" && -n "$SERVERGRADE_PUBLISH_URL" ]] || return 0
+    if [[ "$action" == "start" ]]; then
+        MT_RUN_ID="$(date +%s)-$$-${RANDOM}"
+    fi
+    [[ -n "$MT_RUN_ID" ]] || return 0
+    endpoint="${SERVERGRADE_PUBLISH_URL%/api/results}/api/runs"
+    curl -fsS --max-time 5 -X POST -H 'Content-Type: application/x-www-form-urlencoded' \
+        --data-urlencode "id=$MT_RUN_ID" --data-urlencode "action=$action" "$endpoint" >/dev/null 2>&1 || true
+    [[ "$action" == "end" ]] && MT_RUN_ID=""
+}
+
+run_single_tracked() {
+    mt_run_activity start
+    "$1"
+    local rc=$?
+    mt_run_activity end
+    return $rc
+}
+
 # Секунды -> «≈40 c» / «≈12 мин».
 fmt_eta() {
     local v=$1
@@ -659,6 +681,7 @@ run_all() {
     echo -e "  Тесты идут автоматически; нажмите любую клавишу, чтобы выбрать вручную."
     echo ""
     install_deps_for "${test_funcs[@]}" || return 1
+    mt_run_activity start
 
     # Каталог + статусы для сводки (в картинке показываем и невыбранные тесты)
     MT_CAT_FUNCS=( "${all_funcs[@]}" )
@@ -711,12 +734,14 @@ run_all() {
             q|Q)
                 echo -e "\n${GREEN}Мультитест прерван. Выполнено тестов: $((num - 1))/${total}${NC}"
                 render_and_upload_summary
+                mt_run_activity end
                 return
                 ;;
         esac
 
         # Запуск теста в подоболочке с захватом вывода, Ctrl+C убивает только тест
         MULTITEST_SKIPPED=0
+        mt_run_activity ping
         trap multitest_skip_handler INT
         run_test_with_progress "${test_funcs[$i]}" "${test_log[$i]}" "${test_names[$i]}" \
             "${test_secs[$i]}" "$done_weight" "$total_weight" "$num" "$total"
@@ -739,6 +764,7 @@ run_all() {
     echo ""
     echo -e "${GREEN}${BOLD}Все тесты завершены! (${total}/${total})${NC}"
     render_and_upload_summary
+    mt_run_activity end
 }
 
 # ============================================================
@@ -3272,17 +3298,17 @@ while true; do
     [[ "${MT_PROMO_BELOW:-0}" == "1" ]] && printf '\033[J'
 
     case "$choice" in
-        1)  run_ip_region; pause_prompt ;;
-        2)  run_censorcheck_geoblock; pause_prompt ;;
-        3)  run_censorcheck_dpi; pause_prompt ;;
-        4)  run_censorcheck_tlab; pause_prompt ;;
-        5)  run_iperf3_ru; pause_prompt ;;
-        6)  run_iperf3_tlab; pause_prompt ;;
-        7)  run_yabs; pause_prompt ;;
-        8)  run_ip_check_place; pause_prompt ;;
-        9)  run_bench_sh; pause_prompt ;;
-        10) run_ip_quality; pause_prompt ;;
-        11) run_sysbench_cpu; pause_prompt ;;
+        1)  run_single_tracked run_ip_region; pause_prompt ;;
+        2)  run_single_tracked run_censorcheck_geoblock; pause_prompt ;;
+        3)  run_single_tracked run_censorcheck_dpi; pause_prompt ;;
+        4)  run_single_tracked run_censorcheck_tlab; pause_prompt ;;
+        5)  run_single_tracked run_iperf3_ru; pause_prompt ;;
+        6)  run_single_tracked run_iperf3_tlab; pause_prompt ;;
+        7)  run_single_tracked run_yabs; pause_prompt ;;
+        8)  run_single_tracked run_ip_check_place; pause_prompt ;;
+        9)  run_single_tracked run_bench_sh; pause_prompt ;;
+        10) run_single_tracked run_ip_quality; pause_prompt ;;
+        11) run_single_tracked run_sysbench_cpu; pause_prompt ;;
         12) run_all; pause_prompt ;;
         13) show_utilities_menu ;;
         0)  echo -e "${GREEN}До свидания!${NC}"; exit 0 ;;
