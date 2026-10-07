@@ -7,6 +7,14 @@ footer > strong {
   display: none;
 }
 
+.github-star-widget {
+  display: block;
+  width: 132px;
+  height: 30px;
+  border: 0;
+  color-scheme: dark;
+}
+
 @layer components {
   .language-switch {
     @apply relative inline-flex items-center rounded-full border border-white/10 bg-white/[0.035] p-1;
