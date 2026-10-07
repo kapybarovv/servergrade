@@ -41,26 +41,10 @@ runner и хранит SVG-страницы отчёта вместе с рез�
    Wrangler покажет адрес вида
    `https://servergrade-results.<account>.workers.dev`.
 
-6. Проверьте ручную публикацию:
+6. Проверьте выдачу одноразового challenge:
 
    ```bash
-   curl -X POST https://servergrade-results.<account>.workers.dev/api/results \
-     -H 'Content-Type: application/x-www-form-urlencoded' \
-     --data-urlencode 'score=84' \
-     --data-urlencode 'network_score=90' \
-     --data-urlencode 'performance_score=81' \
-     --data-urlencode 'quality_score=79' \
-     --data-urlencode 'coverage=100' \
-     --data-urlencode 'country=NL' \
-     --data-urlencode 'city=Amsterdam' \
-     --data-urlencode 'cpu=AMD EPYC' \
-     --data-urlencode 'cores=4' \
-     --data-urlencode 'ram=8 GiB' \
-     --data-urlencode 'ram_type=DDR4' \
-     --data-urlencode 'disk=100 GiB' \
-     --data-urlencode 'disk_type=NVMe SSD' \
-     --data-urlencode 'disk_model=Samsung PM9A3' \
-     --data-urlencode 'server_vendor=Supermicro'
+   curl -X POST https://servergrade-results.<account>.workers.dev/api/challenges
    ```
 
 7. После развёртывания официального API обычному пользователю ничего настраивать
@@ -82,8 +66,21 @@ runner и хранит SVG-страницы отчёта вместе с рез�
    SERVERGRADE_PUBLISH_URL=https://servergrade-results.<account>.workers.dev/api/results servergrade
    ```
 
-Публикация выполняется `POST /api/results` в формате
-`application/x-www-form-urlencoded`. Endpoint намеренно принимает только
-короткий нормализованный набор полей и самостоятельно определяет буквенную
-оценку. Перед публичным запуском следует добавить Cloudflare Rate Limiting или
-собственный дневной лимит по хэшу IP, чтобы endpoint не использовали для спама.
+## Модель подтверждения
+
+Runner перед тестом получает `test_id` и одноразовый `nonce` через
+`POST /api/challenges`. Challenge действует два часа и привязан HMAC-хэшем к
+исходному IP. При публикации Worker проверяет nonce и IP, один раз погашает
+challenge и сам считает все четыре оценки только из raw-метрик. Поля score от
+клиента игнорируются.
+
+Результаты без корректного challenge принимаются как `unverified` для обратной
+совместимости и не должны участвовать в рейтингах. Для подтверждённых запусков
+Worker сохраняет ASN, страну, edge-локацию и RTT, полученные Cloudflare на
+входящем соединении. Это edge-attestation, а не внешняя проверка полосы: для
+последней нужны отдельные probe-серверы.
+
+После записи результат не изменяется и получает серверную HMAC-подпись.
+Одноразовый токен загрузки SVG хранится только в виде хэша, действует 10 минут
+и удаляется сразу после загрузки заявленного числа страниц. Повторная запись
+страницы запрещена.

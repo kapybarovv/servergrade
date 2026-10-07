@@ -66,3 +66,57 @@ CREATE TABLE IF NOT EXISTS active_runs (
 );
 
 CREATE INDEX IF NOT EXISTS active_runs_updated_at ON active_runs(updated_at);
+
+-- Server-owned security state. Kept separate from legacy tables so existing
+-- installations can migrate idempotently without ALTER TABLE bookkeeping.
+CREATE TABLE IF NOT EXISTS app_secrets (
+  name TEXT PRIMARY KEY,
+  value TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS result_challenges (
+  id TEXT PRIMARY KEY,
+  nonce_hash TEXT NOT NULL,
+  source_ip_hash TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  used_at TEXT,
+  edge_country TEXT NOT NULL,
+  edge_asn INTEGER,
+  edge_org TEXT NOT NULL,
+  edge_rtt_ms INTEGER,
+  edge_colo TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS result_challenges_ip_created
+  ON result_challenges(source_ip_hash, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS result_security (
+  result_id TEXT PRIMARY KEY,
+  verified INTEGER NOT NULL DEFAULT 0,
+  verification_level TEXT NOT NULL,
+  challenge_id TEXT,
+  signature TEXT NOT NULL,
+  source_ip_hash TEXT NOT NULL,
+  edge_country TEXT NOT NULL,
+  edge_asn INTEGER,
+  edge_org TEXT NOT NULL,
+  edge_rtt_ms INTEGER,
+  edge_colo TEXT NOT NULL,
+  external_probe_status TEXT NOT NULL,
+  immutable_at TEXT NOT NULL,
+  FOREIGN KEY (result_id) REFERENCES results(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS result_security_verified
+  ON result_security(verified, result_id);
+
+CREATE TABLE IF NOT EXISTS secure_upload_tokens (
+  result_id TEXT PRIMARY KEY,
+  token_hash TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  expected_count INTEGER NOT NULL,
+  uploaded_count INTEGER NOT NULL DEFAULT 0,
+  FOREIGN KEY (result_id) REFERENCES results(id) ON DELETE CASCADE
+);

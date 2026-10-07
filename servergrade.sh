@@ -415,6 +415,8 @@ run_sysbench_cpu() {
 
 MULTITEST_SKIPPED=0
 MT_ACTIVE_PID=""
+MT_CHALLENGE_ID=""
+MT_CHALLENGE_NONCE=""
 
 multitest_skip_handler() {
     MULTITEST_SKIPPED=1
@@ -432,6 +434,24 @@ mt_run_activity() {
     curl -fsS --max-time 5 -X POST -H 'Content-Type: application/x-www-form-urlencoded' \
         --data-urlencode "id=$MT_RUN_ID" --data-urlencode "action=$action" "$endpoint" >/dev/null 2>&1 || true
     [[ "$action" == "end" ]] && MT_RUN_ID=""
+}
+
+# Одноразовый challenge берётся до запуска тестов. Worker привязывает его к
+# исходному IP, а при публикации сам пересчитывает итоговые баллы из raw-метрик.
+mt_request_challenge() {
+    local endpoint response
+    MT_CHALLENGE_ID=""; MT_CHALLENGE_NONCE=""
+    [[ "$SERVERGRADE_PUBLISH" == "1" && -n "$SERVERGRADE_PUBLISH_URL" ]] || return 0
+    endpoint="${SERVERGRADE_PUBLISH_URL%/api/results}/api/challenges"
+    response=$(curl -fsS --max-time 10 -X POST "$endpoint" 2>/dev/null) || return 0
+    MT_CHALLENGE_ID=$(printf '%s' "$response" | grep -oE '"test_id"[[:space:]]*:[[:space:]]*"[0-9]{8}"' | head -1 | grep -oE '[0-9]{8}')
+    MT_CHALLENGE_NONCE=$(printf '%s' "$response" | grep -oE '"nonce"[[:space:]]*:[[:space:]]*"[a-f0-9]{64}"' | head -1 | sed 's/.*"\([a-f0-9]*\)"$/\1/')
+    if [[ "$MT_CHALLENGE_ID" =~ ^[0-9]{8}$ && "$MT_CHALLENGE_NONCE" =~ ^[a-f0-9]{64}$ ]]; then
+        echo -e "  ${GREEN}Сессия проверки:${NC} #${MT_CHALLENGE_ID} · привязана к исходному IP"
+    else
+        MT_CHALLENGE_ID=""; MT_CHALLENGE_NONCE=""
+        echo -e "  ${YELLOW}Сессия проверки недоступна: результат будет без аттестации.${NC}"
+    fi
 }
 
 run_single_tracked() {
@@ -680,6 +700,7 @@ run_all() {
     echo -e "  ${YELLOW}Ctrl+C${NC} во время теста — пропустить текущий"
     echo -e "  Тесты идут автоматически; нажмите любую клавишу, чтобы выбрать вручную."
     echo ""
+    mt_request_challenge
     install_deps_for "${test_funcs[@]}" || return 1
     mt_run_activity start
 
@@ -1196,7 +1217,7 @@ upload_report() {
 # Публикация замера: сервер принимает сводные поля, сам определяет буквенную
 # оценку и возвращает одноразовый токен для загрузки страниц отчёта.
 publish_result_page() {
-    local report_url="${1:-}" response page id token metrics_blob="" services_blob="" statuses_blob="" fn line idx name st
+    local report_url="${1:-}" response page id token metrics_blob="" services_blob="" statuses_blob="" fn line idx name st pages_expected=0
     [[ "$SERVERGRADE_PUBLISH" == "1" && -n "$SERVERGRADE_PUBLISH_URL" ]] || return 0
     mt_calculate_score
     for idx in "${!MT_CAT_FUNCS[@]}"; do
@@ -1211,13 +1232,13 @@ publish_result_page() {
     done
     metrics_blob="${metrics_blob:0:48000}"
     services_blob="${services_blob:0:48000}"
+    [[ -s "$SUMMARY_DIR/pages.list" ]] && pages_expected=$(wc -l < "$SUMMARY_DIR/pages.list" | tr -d '[:space:]')
+    [[ "$pages_expected" =~ ^[0-9]+$ ]] || pages_expected=0
     response=$(curl -fsS --max-time 20 -X POST \
         -H 'Content-Type: application/x-www-form-urlencoded' \
-        --data-urlencode "score=$MT_SCORE" \
-        --data-urlencode "network_score=$MT_SCORE_NETWORK" \
-        --data-urlencode "performance_score=$MT_SCORE_PERF" \
-        --data-urlencode "quality_score=$MT_SCORE_QUALITY" \
-        --data-urlencode "coverage=$MT_SCORE_COVERAGE" \
+        --data-urlencode "challenge_id=$MT_CHALLENGE_ID" \
+        --data-urlencode "nonce=$MT_CHALLENGE_NONCE" \
+        --data-urlencode "pages_expected=$pages_expected" \
         --data-urlencode "country=$SYS_COUNTRY" \
         --data-urlencode "city=$SYS_CITY" \
         --data-urlencode "cpu=$SYS_CPU" \
