@@ -24,7 +24,6 @@ MT_UA="Mozilla/5.0 (X11; Linux x86_64) servergrade/${SCRIPT_VERSION}"
 # публикацию можно явно: SERVERGRADE_PUBLISH=0 servergrade
 SERVERGRADE_PUBLISH="${SERVERGRADE_PUBLISH:-1}"
 SERVERGRADE_PUBLISH_URL="${SERVERGRADE_PUBLISH_URL:-https://servergrade-results.kapybarovv.workers.dev/api/results}"
-SERVERGRADE_REPORT_MODE="${SERVERGRADE_REPORT_MODE:-ask}" # ask | visual | terminal
 MT_RUN_ID=""
 
 # Спонсор: подпись в подвале сводки (см. sv_sponsor) и блок в главном меню
@@ -455,19 +454,6 @@ mt_request_challenge() {
     fi
 }
 
-mt_choose_report_mode() {
-    case "$SERVERGRADE_REPORT_MODE" in visual|terminal) return 0;; esac
-    SERVERGRADE_REPORT_MODE="visual"
-    [[ -t 0 && -t 1 && "${TERM:-dumb}" != "dumb" ]] || return 0
-    echo -e "  ${BOLD}Формат публичного отчёта:${NC}"
-    echo -e "    ${GREEN}1)${NC} Графический  ${CYAN}· страницы и lightbox${NC}"
-    echo -e "    ${GREEN}2)${NC} Терминальный  ${CYAN}· только данные, без изображений${NC}"
-    echo -ne "  ${BOLD}Выбор (Enter = 1): ${NC}"
-    local choice=""; read -r choice
-    [[ "$choice" == "2" ]] && SERVERGRADE_REPORT_MODE="terminal"
-    echo ""
-}
-
 run_single_tracked() {
     mt_run_activity start
     "$1"
@@ -521,7 +507,7 @@ run_test_with_progress() {
     while kill -0 "$MT_ACTIVE_PID" 2>/dev/null; do
         lines_now=$(wc -l < "$live" 2>/dev/null || echo 0)
         if (( lines_now >= next_line )); then
-            sed -n "${next_line},${lines_now}p" "$live" | strip_ansi
+            sed -n "${next_line},${lines_now}p" "$live"
             next_line=$((lines_now+1))
         fi
         mt_progress_panel "$title" "$((SECONDS-started))" "$expected" "$done_weight" "$total_weight" "$step" "$steps" "$panel_top" "$cols"
@@ -530,7 +516,7 @@ run_test_with_progress() {
     wait "$MT_ACTIVE_PID"; rc=$?
     MT_ACTIVE_PID=""
     lines_now=$(wc -l < "$live" 2>/dev/null || echo 0)
-    (( lines_now >= next_line )) && sed -n "${next_line},${lines_now}p" "$live" | strip_ansi
+    (( lines_now >= next_line )) && sed -n "${next_line},${lines_now}p" "$live"
     printf '\033[r\033[%d;1H\033[J\033[?25h' "$panel_top"
     if (( rc == 0 )); then
         printf "  ${GREEN}✓${NC} %s  ${YELLOW}%s${NC}\n" "$title" "$(fmt_eta "$((SECONDS-started))")"
@@ -714,7 +700,6 @@ run_all() {
     echo -e "  ${YELLOW}Ctrl+C${NC} во время теста — пропустить текущий"
     echo -e "  Тесты идут автоматически; нажмите любую клавишу, чтобы выбрать вручную."
     echo ""
-    mt_choose_report_mode
     mt_request_challenge
     install_deps_for "${test_funcs[@]}" || return 1
     mt_run_activity start
@@ -1232,7 +1217,7 @@ upload_report() {
 # Публикация замера: сервер принимает сводные поля, сам определяет буквенную
 # оценку и возвращает одноразовый токен для загрузки страниц отчёта.
 publish_result_page() {
-    local report_url="${1:-}" response page id token metrics_blob="" services_blob="" statuses_blob="" fn line idx name st pages_expected=0
+    local report_url="${1:-}" response page id token metrics_blob="" services_blob="" statuses_blob="" terminal_blob="" fn line idx name st pages_expected=0
     [[ "$SERVERGRADE_PUBLISH" == "1" && -n "$SERVERGRADE_PUBLISH_URL" ]] || return 0
     mt_calculate_score
     for idx in "${!MT_CAT_FUNCS[@]}"; do
@@ -1247,6 +1232,16 @@ publish_result_page() {
     done
     metrics_blob="${metrics_blob:0:48000}"
     services_blob="${services_blob:0:48000}"
+    for idx in "${!test_log[@]}"; do
+        [[ -s "${test_log[$idx]}" ]] || continue
+        printf -v terminal_blob '%s\n\n===== %s =====\n' "$terminal_blob" "${test_names[$idx]:-Тест $((idx+1))}"
+        while IFS= read -r line; do
+            line=$(printf '%s\n' "$line" | strip_ansi)
+            printf -v terminal_blob '%s%s\n' "$terminal_blob" "$line"
+            (( ${#terminal_blob} >= 180000 )) && break 2
+        done < "${test_log[$idx]}"
+    done
+    terminal_blob="${terminal_blob:0:180000}"
     [[ -s "$SUMMARY_DIR/pages.list" ]] && pages_expected=$(wc -l < "$SUMMARY_DIR/pages.list" | tr -d '[:space:]')
     [[ "$pages_expected" =~ ^[0-9]+$ ]] || pages_expected=0
     response=$(curl -fsS --max-time 20 -X POST \
@@ -1278,6 +1273,7 @@ publish_result_page() {
         --data-urlencode "test_statuses=$statuses_blob" \
         --data-urlencode "metrics=$metrics_blob" \
         --data-urlencode "services=$services_blob" \
+        --data-urlencode "terminal_report=$terminal_blob" \
         --data-urlencode "report_url=$report_url" \
         --data-urlencode "runner_version=$SCRIPT_VERSION" \
         "$SERVERGRADE_PUBLISH_URL" 2>/dev/null) || {
@@ -3140,12 +3136,6 @@ step_upload_album() {
     cp "$SUMMARY_DIR/public-url.txt" "$SUMMARY_DIR/url.txt"
 }
 
-step_publish_terminal() {
-    gather_system_facts
-    publish_result_page "" || return 1
-    cp "$SUMMARY_DIR/public-url.txt" "$SUMMARY_DIR/url.txt"
-}
-
 print_report_link() {
     local url
     url=$(cat "$SUMMARY_DIR/url.txt" 2>/dev/null)
@@ -3229,15 +3219,6 @@ render_and_upload_summary() {
         }
     fi
     rm -f "$SUMMARY_DIR/url.txt" "$SUMMARY_DIR/out.path" "$SUMMARY_DIR/expires.txt"
-
-    if [[ "$SERVERGRADE_REPORT_MODE" == "terminal" ]]; then
-        if spin_run "Публикую терминальный отчёт" step_publish_terminal; then
-            print_report_link
-        else
-            echo -e "  ${YELLOW}Не удалось опубликовать отчёт.${NC}"
-        fi
-        return 0
-    fi
 
     print_separator "Формирую графический отчёт"
 

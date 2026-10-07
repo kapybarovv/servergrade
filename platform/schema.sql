@@ -59,6 +59,12 @@ CREATE TABLE IF NOT EXISTS result_assets (
   FOREIGN KEY (result_id) REFERENCES results(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS result_terminal_reports (
+  result_id TEXT PRIMARY KEY,
+  content TEXT NOT NULL,
+  FOREIGN KEY (result_id) REFERENCES results(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS active_runs (
   id TEXT PRIMARY KEY,
   started_at TEXT NOT NULL,
