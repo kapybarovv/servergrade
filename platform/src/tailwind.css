@@ -7,14 +7,6 @@ footer > strong {
   display: none;
 }
 
-.github-star-widget {
-  display: block;
-  width: 132px;
-  height: 30px;
-  border: 0;
-  color-scheme: dark;
-}
-
 @layer components {
   .language-switch {
     @apply relative inline-flex items-center rounded-full border border-white/10 bg-white/[0.035] p-1;
@@ -91,6 +83,8 @@ footer > strong {
 /* React Bits Side Rays, adapted to the non-React Worker shell. */
 .home-hero {
   isolation: isolate;
+  --ray-pointer-x: 0px;
+  --ray-pointer-y: 0px;
 }
 
 .home-hero::before,
@@ -123,13 +117,13 @@ footer > strong {
 }
 
 @keyframes sideRaysDrift {
-  from { transform: translate3d(2%, -2%, 0) rotate(-1.5deg) scale(1.03); }
-  to { transform: translate3d(-2%, 2%, 0) rotate(2deg) scale(1.08); }
+  from { transform: translate3d(calc(2% + var(--ray-pointer-x)), calc(-2% + var(--ray-pointer-y)), 0) rotate(-1.5deg) scale(1.03); }
+  to { transform: translate3d(calc(-2% + var(--ray-pointer-x)), calc(2% + var(--ray-pointer-y)), 0) rotate(2deg) scale(1.08); }
 }
 
 @keyframes sideRaysDriftSecondary {
-  from { transform: translate3d(-1%, 1%, 0) rotate(1deg) scale(1.05); }
-  to { transform: translate3d(2%, -1%, 0) rotate(-2deg) scale(1.1); }
+  from { transform: translate3d(calc(-1% - var(--ray-pointer-x)), calc(1% - var(--ray-pointer-y)), 0) rotate(1deg) scale(1.05); }
+  to { transform: translate3d(calc(2% - var(--ray-pointer-x)), calc(-1% - var(--ray-pointer-y)), 0) rotate(-2deg) scale(1.1); }
 }
 
 @media (max-width: 760px) {
