@@ -79,3 +79,63 @@ footer > strong {
     transform: none;
   }
 }
+
+/* React Bits Side Rays, adapted to the non-React Worker shell. */
+.home-hero {
+  isolation: isolate;
+}
+
+.home-hero::before,
+.home-hero::after {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  inset: -18% -12% -12% 20%;
+  overflow: hidden;
+  pointer-events: none;
+  transform-origin: 92% 4%;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, rgb(0 0 0 / 0.28) 35%, #000 72%, transparent 100%);
+  mask-image: linear-gradient(90deg, transparent 0%, rgb(0 0 0 / 0.28) 35%, #000 72%, transparent 100%);
+}
+
+.home-hero::before {
+  background:
+    conic-gradient(from 208deg at 92% 4%, transparent 0deg 9deg, rgb(57 228 146 / 0.09) 10deg 13deg, transparent 14deg 21deg, rgb(57 228 146 / 0.16) 22deg 25deg, transparent 26deg 35deg, rgb(57 228 146 / 0.08) 36deg 39deg, transparent 40deg 360deg),
+    radial-gradient(circle at 90% 8%, rgb(57 228 146 / 0.16), transparent 38%);
+  filter: blur(10px) saturate(1.08);
+  opacity: 0.76;
+  animation: sideRaysDrift 14s cubic-bezier(0.77, 0, 0.175, 1) infinite alternate;
+}
+
+.home-hero::after {
+  background: conic-gradient(from 216deg at 92% 4%, transparent 0deg 13deg, rgb(55 184 170 / 0.07) 14deg 17deg, transparent 18deg 29deg, rgb(75 231 174 / 0.1) 30deg 33deg, transparent 34deg 360deg);
+  filter: blur(18px);
+  opacity: 0.58;
+  animation: sideRaysDriftSecondary 18s cubic-bezier(0.77, 0, 0.175, 1) infinite alternate;
+}
+
+@keyframes sideRaysDrift {
+  from { transform: translate3d(2%, -2%, 0) rotate(-1.5deg) scale(1.03); }
+  to { transform: translate3d(-2%, 2%, 0) rotate(2deg) scale(1.08); }
+}
+
+@keyframes sideRaysDriftSecondary {
+  from { transform: translate3d(-1%, 1%, 0) rotate(1deg) scale(1.05); }
+  to { transform: translate3d(2%, -1%, 0) rotate(-2deg) scale(1.1); }
+}
+
+@media (max-width: 760px) {
+  .home-hero::before,
+  .home-hero::after {
+    inset: -10% -45% -10% 22%;
+    opacity: 0.46;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .home-hero::before,
+  .home-hero::after {
+    animation: none;
+    transform: none;
+  }
+}
