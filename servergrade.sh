@@ -23,7 +23,7 @@ MT_UA="Mozilla/5.0 (X11; Linux x86_64) servergrade/${SCRIPT_VERSION}"
 # Официальный SaaS принимает пользовательские замеры автоматически. Отключить
 # публикацию можно явно: SERVERGRADE_PUBLISH=0 servergrade
 SERVERGRADE_PUBLISH="${SERVERGRADE_PUBLISH:-1}"
-SERVERGRADE_PUBLISH_URL="${SERVERGRADE_PUBLISH_URL:-https://servergrade-results.zontoed.workers.dev/api/results}"
+SERVERGRADE_PUBLISH_URL="${SERVERGRADE_PUBLISH_URL:-https://servergrade-results.kapybarovv.workers.dev/api/results}"
 
 # Спонсор: подпись в подвале сводки (см. sv_sponsor) и блок в главном меню
 # (см. print_stencloud_promo).
@@ -1056,9 +1056,21 @@ upload_report() {
 # результат как неподтверждённый; сервер принимает только сводные поля и сам
 # определяет буквенный grade из числового score.
 publish_result_page() {
-    local report_url="$1" response page
+    local report_url="$1" response page metrics_blob="" services_blob="" statuses_blob="" fn line idx name st
     [[ "$SERVERGRADE_PUBLISH" == "1" && -n "$SERVERGRADE_PUBLISH_URL" ]] || return 0
     mt_calculate_score
+    for idx in "${!MT_CAT_FUNCS[@]}"; do
+        fn="${MT_CAT_FUNCS[$idx]}"; name="${MT_CAT_NAMES[$idx]}"; st="${MT_STATUS[$fn]:-не запускался}"
+        printf -v statuses_blob '%s%s\x1f%s\x1f%s\n' "$statuses_blob" "$fn" "$name" "$st"
+        if [[ -s "$SUMMARY_DIR/$fn.metrics" ]]; then
+            while IFS= read -r line; do printf -v metrics_blob '%s%s\x1f%s\n' "$metrics_blob" "$fn" "$line"; done < "$SUMMARY_DIR/$fn.metrics"
+        fi
+        if [[ -s "$SUMMARY_DIR/$fn.services" ]]; then
+            while IFS= read -r line; do printf -v services_blob '%s%s\x1f%s\n' "$services_blob" "$fn" "$line"; done < "$SUMMARY_DIR/$fn.services"
+        fi
+    done
+    metrics_blob="${metrics_blob:0:48000}"
+    services_blob="${services_blob:0:48000}"
     response=$(curl -fsS --max-time 20 -X POST \
         -H 'Content-Type: application/x-www-form-urlencoded' \
         --data-urlencode "score=$MT_SCORE" \
@@ -1076,6 +1088,20 @@ publish_result_page() {
         --data-urlencode "disk_type=$SYS_DISK_TYPE" \
         --data-urlencode "disk_model=$SYS_DISK_MODEL" \
         --data-urlencode "server_vendor=$SYS_SERVER_INFO" \
+        --data-urlencode "asn=$SYS_ASN" \
+        --data-urlencode "os=$SYS_OS" \
+        --data-urlencode "kernel=$SYS_KERNEL" \
+        --data-urlencode "arch=$SYS_ARCH" \
+        --data-urlencode "virtualization=$SYS_VIRT" \
+        --data-urlencode "congestion_control=$SYS_CC" \
+        --data-urlencode "qdisc=$SYS_QDISC" \
+        --data-urlencode "uptime=$SYS_UPTIME" \
+        --data-urlencode "load_avg=$SYS_LOAD" \
+        --data-urlencode "has_ipv4=$([[ -n "$SYS_IP4" ]] && echo 1 || echo 0)" \
+        --data-urlencode "has_ipv6=$([[ -n "$SYS_IP6" ]] && echo 1 || echo 0)" \
+        --data-urlencode "test_statuses=$statuses_blob" \
+        --data-urlencode "metrics=$metrics_blob" \
+        --data-urlencode "services=$services_blob" \
         --data-urlencode "report_url=$report_url" \
         --data-urlencode "runner_version=$SCRIPT_VERSION" \
         "$SERVERGRADE_PUBLISH_URL" 2>/dev/null) || {
@@ -3071,7 +3097,7 @@ render_and_upload_summary() {
 
 show_menu() {
     print_header
-    echo -e "  ${CYAN}Результаты публикуются на servergrade-results.zontoed.workers.dev${NC}"
+    echo -e "  ${CYAN}Результаты публикуются на servergrade-results.kapybarovv.workers.dev${NC}"
     echo -e "  ${YELLOW}Публикация пользовательская, без подтверждения достоверности.${NC}"
     menu_item 12 "Полная диагностика" "рекомендуется"
 

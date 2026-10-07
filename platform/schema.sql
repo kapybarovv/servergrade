@@ -23,3 +23,22 @@ CREATE TABLE IF NOT EXISTS results (
 );
 
 CREATE INDEX IF NOT EXISTS results_created_at ON results(created_at DESC);
+
+CREATE TABLE IF NOT EXISTS result_details (
+  result_id TEXT PRIMARY KEY,
+  asn TEXT NOT NULL,
+  os TEXT NOT NULL,
+  kernel TEXT NOT NULL,
+  arch TEXT NOT NULL,
+  virtualization TEXT NOT NULL,
+  congestion_control TEXT NOT NULL,
+  qdisc TEXT NOT NULL,
+  uptime TEXT NOT NULL,
+  load_avg TEXT NOT NULL,
+  has_ipv4 INTEGER NOT NULL DEFAULT 0,
+  has_ipv6 INTEGER NOT NULL DEFAULT 0,
+  test_statuses TEXT NOT NULL,
+  metrics TEXT NOT NULL,
+  services TEXT NOT NULL,
+  FOREIGN KEY (result_id) REFERENCES results(id) ON DELETE CASCADE
+);

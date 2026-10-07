@@ -65,7 +65,7 @@
 
 7. После развёртывания официального API обычному пользователю ничего настраивать
    не нужно. Runner уже содержит endpoint
-   `https://servergrade-results.zontoed.workers.dev/api/results`:
+   `https://servergrade-results.kapybarovv.workers.dev/api/results`:
 
    ```bash
    bash <(curl -fsSL https://raw.githubusercontent.com/kapybarovv/servergrade/main/servergrade.sh)

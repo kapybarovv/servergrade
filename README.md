@@ -103,7 +103,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/kapybarovv/servergrade/main/
 ```
 
 Runner автоматически отправляет сводные измерения на
-`servergrade-results.zontoed.workers.dev`, получает
+`servergrade-results.kapybarovv.workers.dev`, получает
 адрес `/test/12345678` и печатает его в терминале. Отключить публикацию можно
 командой `SERVERGRADE_PUBLISH=0 servergrade`. Каждая страница предупреждает,
 что результат прислал пользователь и данные могут быть подделаны.
