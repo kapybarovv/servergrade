@@ -2,6 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
+/* The disclaimer stays, but does not need a label of its own. */
+footer > strong {
+  display: none;
+}
+
 @layer components {
   .language-switch {
     @apply inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.035] p-1;
