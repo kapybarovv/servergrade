@@ -9,14 +9,73 @@ footer > strong {
 
 @layer components {
   .language-switch {
-    @apply inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.035] p-1;
+    @apply relative inline-flex items-center rounded-full border border-white/10 bg-white/[0.035] p-1;
+    display: inline-flex !important;
+    min-width: 58px;
+  }
+
+  .language-switch::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 100%;
+    width: 100%;
+    height: 8px;
   }
 
   .language-option {
-    @apply rounded-full px-2.5 py-1 text-[10px] font-bold text-neutral-500 transition-colors hover:text-neutral-200;
+    @apply rounded-full px-3 py-1.5 text-[10px] font-bold text-neutral-400;
+    transition: color 160ms ease, background-color 160ms ease, opacity 160ms ease, transform 160ms cubic-bezier(0.23, 1, 0.32, 1);
   }
 
   .language-option[aria-current="true"] {
     @apply bg-neutral-800 text-neutral-100;
+    padding-right: 24px;
+  }
+
+  .language-option[aria-current="true"]::after {
+    content: "⌄";
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    color: rgb(115 115 115);
+    transform: translateY(-58%);
+  }
+
+  .language-option:not([aria-current="true"]) {
+    position: absolute;
+    z-index: 90;
+    left: 0;
+    top: calc(100% + 7px);
+    width: 100%;
+    border: 1px solid rgb(255 255 255 / 0.1);
+    background: rgb(27 28 29 / 0.98);
+    color: rgb(229 229 229);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transform: translateY(-5px) scale(0.97);
+    transform-origin: top center;
+    box-shadow: 0 14px 36px rgb(0 0 0 / 0.34);
+    backdrop-filter: blur(18px);
+  }
+
+  .language-switch:hover .language-option:not([aria-current="true"]),
+  .language-switch:focus-within .language-option:not([aria-current="true"]) {
+    opacity: 1;
+    visibility: visible;
+    pointer-events: auto;
+    transform: translateY(0) scale(1);
+  }
+
+  .language-option:focus-visible {
+    outline: 2px solid #62dfaf;
+    outline-offset: 2px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .language-option:not([aria-current="true"]) {
+    transform: none;
   }
 }
