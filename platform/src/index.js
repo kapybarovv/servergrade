@@ -11,7 +11,7 @@ const escapeHtml = (value = "") => String(value)
   .replaceAll("'", "&#039;");
 
 const clamp = (value) => Math.max(0, Math.min(100, Number.parseInt(value, 10) || 0));
-const splitRows = (value = "") => String(value).split("\n").filter(Boolean).map((line) => line.split("\x1f"));
+const splitRows = (value = "") => value ? String(value).split("\n").filter(Boolean).map((line) => line.split("\x1f")) : [];
 
 function renderDetailedResults(r) {
   const statuses = new Map(splitRows(r.test_statuses).map(([fn, name, status]) => [fn, { name, status }]));
