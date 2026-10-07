@@ -4,7 +4,7 @@
 #  ServerGrade — интерактивная диагностика сервера
 # ============================================================
 
-SCRIPT_VERSION="1.4.0"
+SCRIPT_VERSION="1.4.1"
 REPO_URL="https://raw.githubusercontent.com/kapybarovv/servergrade/main/servergrade.sh"
 
 # Цвета
@@ -197,6 +197,47 @@ detect_pkg_manager() {
     fi
 }
 
+APT_INDEX_READY=0
+
+apt_install_package() {
+    local pkg="$1"; shift
+    local -a elevate=( "$@" )
+    local -a update_opts=( -o Acquire::Retries=3 --allow-releaseinfo-change )
+
+    if (( APT_INDEX_READY == 0 )); then
+        echo -e "${CYAN}Обновляю индекс APT...${NC}"
+        "${elevate[@]}" apt-get "${update_opts[@]}" update || return 1
+        APT_INDEX_READY=1
+    fi
+
+    "${elevate[@]}" env DEBIAN_FRONTEND=noninteractive apt-get \
+        -o Acquire::Retries=3 install -y "$pkg" && return 0
+
+    # Репозиторий мог удалить старую ревизию между обновлениями зеркал, либо
+    # transparent proxy провайдера отдал закешированный Packages index.
+    echo -e "${YELLOW}Пакетный индекс устарел — обновляю без кеша и повторяю...${NC}"
+    "${elevate[@]}" apt-get clean || true
+    "${elevate[@]}" apt-get \
+        -o Acquire::Retries=5 \
+        -o Acquire::http::No-Cache=true \
+        -o Acquire::https::No-Cache=true \
+        --allow-releaseinfo-change update || return 1
+    "${elevate[@]}" env DEBIAN_FRONTEND=noninteractive apt-get \
+        -o Acquire::Retries=5 --fix-missing install -y "$pkg" && return 0
+
+    # После EOL security-архив старого Debian иногда ещё публикует индекс со
+    # ссылками на уже снятые .deb. Не переписываем sources.list: просим APT
+    # взять согласованный пакет и его зависимости из базового suite.
+    local codename=""
+    [[ -r /etc/os-release ]] && codename=$(sed -n 's/^VERSION_CODENAME=//p' /etc/os-release | tr -d '"' | head -1)
+    if [[ -n "$codename" ]]; then
+        echo -e "${YELLOW}Security-ревизия недоступна — пробую базовый репозиторий ${codename}...${NC}"
+        "${elevate[@]}" env DEBIAN_FRONTEND=noninteractive apt-get \
+            -o Acquire::Retries=5 install -y "${pkg}/${codename}" && return 0
+    fi
+    return 1
+}
+
 install_package() {
     local pkg="$1"
     local pm
@@ -213,7 +254,7 @@ install_package() {
     echo -e "${YELLOW}Устанавливаю ${pkg}...${NC}"
 
     case "$pm" in
-        apt)     "${elevate[@]}" apt-get update -qq && "${elevate[@]}" env DEBIAN_FRONTEND=noninteractive apt-get install -y "$pkg" ;;
+        apt)     apt_install_package "$pkg" "${elevate[@]}" ;;
         dnf)     "${elevate[@]}" dnf install -y -q "$pkg" ;;
         yum)     "${elevate[@]}" yum install -y -q "$pkg" ;;
         apk)     "${elevate[@]}" apk add --quiet "$pkg" ;;
@@ -1004,8 +1045,8 @@ capture_test() {
     local fn="$1"
     local logfile="$2"
 
-    export RED GREEN YELLOW CYAN BOLD NC SCRIPT_VERSION
-    export -f print_separator check_and_install install_package detect_pkg_manager
+    export RED GREEN YELLOW CYAN BOLD NC SCRIPT_VERSION APT_INDEX_READY
+    export -f print_separator check_and_install install_package apt_install_package detect_pkg_manager
     export -f run_ip_region run_censorcheck_geoblock run_censorcheck_dpi \
               run_censorcheck_tlab run_iperf3_ru run_iperf3_tlab run_yabs \
               run_ip_check_place run_bench_sh run_ip_quality run_sysbench_cpu
