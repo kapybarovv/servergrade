@@ -30,10 +30,11 @@ function icon(name) {
 }
 
 function countryCode(value = "") {
-  const raw = String(value).trim();
+  const raw = String(value).replace(/[\u{1F1E6}-\u{1F1FF}]/gu, "").trim();
   if (/^[a-z]{2}$/i.test(raw)) return raw.toUpperCase();
   const names = { "нидерланды": "NL", netherlands: "NL", "германия": "DE", germany: "DE", "франция": "FR", france: "FR", "россия": "RU", russia: "RU", "сша": "US", usa: "US", "united states": "US", "великобритания": "GB", "united kingdom": "GB", "финляндия": "FI", finland: "FI", "эстония": "EE", estonia: "EE", "польша": "PL", poland: "PL", "швеция": "SE", sweden: "SE", "норвегия": "NO", norway: "NO", "латвия": "LV", latvia: "LV", "литва": "LT", lithuania: "LT" };
-  return names[raw.toLowerCase()] || "";
+  const normalized = raw.toLowerCase();
+  return names[normalized] || Object.entries(names).find(([name]) => normalized.includes(name))?.[1] || "";
 }
 
 function appleFlag(country) {
@@ -43,8 +44,10 @@ function appleFlag(country) {
   return `<img class="flag" src="https://cdn.jsdelivr.net/npm/emoji-datasource-apple@16.0.0/img/apple/64/${unified}.png" alt="${escapeHtml(code)}" width="24" height="24">`;
 }
 
+const countryLabel = (country) => String(country).replace(/[\u{1F1E6}-\u{1F1FF}]/gu, "").trim();
+
 function location(country, city) {
-  return `<span class="location">${appleFlag(country)}<span>${escapeHtml(country)}${present(city) ? ` · ${escapeHtml(city)}` : ""}</span></span>`;
+  return `<span class="location">${appleFlag(country)}<span>${escapeHtml(countryLabel(country))}${present(city) ? ` · ${escapeHtml(city)}` : ""}</span></span>`;
 }
 
 function renderDetailedResults(r) {
@@ -87,7 +90,7 @@ function renderResult(r, assets = []) {
   const facts = [item("CPU", r.cpu), item("Ядра", r.cores), item("RAM", ram), item("Диск", disk), item("Модель диска", r.disk_model), item("Вендор", r.server_vendor)].join("");
   const system = [item("ASN / провайдер", r.asn, "system-item"), item("ОС", r.os, "system-item"), item("Ядро / архитектура", kernel, "system-item"), item("Виртуализация", r.virtualization, "system-item"), item("BBR / QDISC", network, "system-item"), item("Uptime", r.uptime, "system-item"), item("Load avg", r.load_avg, "system-item"), r.result_id ? item("Сетевой стек", `IPv4 ${r.has_ipv4 ? "есть" : "нет"} · IPv6 ${r.has_ipv6 ? "есть" : "нет"}`, "system-item") : ""].join("");
   const gallery = assets.length ? `<section class="report-section"><div class="section-head"><span>Отчёт</span><b>${assets.length} ${assets.length === 1 ? "страница" : "страницы"}</b></div><div class="report-gallery">${assets.map((a) => `<a href="/assets/${escapeHtml(r.id)}/${a.position}.svg" target="_blank"><img src="/assets/${escapeHtml(r.id)}/${a.position}.svg" alt="${escapeHtml(a.name)}" loading="lazy"><span>${escapeHtml(a.name)}</span></a>`).join("")}</div></section>` : "";
-  return shell(`Тест ${r.id}`, `<main><a class="back" href="/">← Все тесты</a><div class="result-heading"><div><div class="eyebrow">ТЕСТ ${escapeHtml(r.id)} · ${escapeHtml(r.created_at)}</div><h1 class="result-location">${appleFlag(r.country)}<span>${escapeHtml(r.country)} · ${escapeHtml(r.city)}</span></h1><p class="muted">${present(r.cpu) ? escapeHtml(r.cpu) : "Результат диагностики сервера"}</p></div><div class="score-badge"><strong>${clamp(r.score)}</strong><span>/ 100 · ${escapeHtml(r.grade)}</span></div></div>
+  return shell(`Тест ${r.id}`, `<main><a class="back" href="/">← Все тесты</a><div class="result-heading"><div><div class="eyebrow">ТЕСТ ${escapeHtml(r.id)} · ${escapeHtml(r.created_at)}</div><h1 class="result-location">${appleFlag(r.country)}<span>${escapeHtml(countryLabel(r.country))} · ${escapeHtml(r.city)}</span></h1><p class="muted">${present(r.cpu) ? escapeHtml(r.cpu) : "Результат диагностики сервера"}</p></div><div class="score-badge"><strong>${clamp(r.score)}</strong><span>/ 100 · ${escapeHtml(r.grade)}</span></div></div>
   <section class="score compact-score"><div class="panel metrics"><div class="metric"><span>СЕТЬ</span><b>${clamp(r.network_score)}</b></div><div class="metric"><span>ПРОИЗВОДИТЕЛЬНОСТЬ</span><b>${clamp(r.performance_score)}</b></div><div class="metric"><span>КАЧЕСТВО IP</span><b>${clamp(r.quality_score)}</b></div><div class="metric"><span>ПОКРЫТИЕ</span><b>${clamp(r.coverage)}%</b></div></div></section>
   ${facts ? `<section class="facts">${facts}</section>` : ""}${system ? `<section class="system-grid">${system}</section>` : ""}
   ${gallery}${renderDetailedResults(r)}
