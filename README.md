@@ -2,6 +2,10 @@
 
 Минималистичный тест сервера с аккуратными карточками результатов. Проверяет железо, сеть, производительность, доступность сервисов и качество IP, а затем собирает готовые PNG/SVG-отчёты.
 
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/kapybarovv/servergrade/main/servergrade.sh)
+```
+
 ![Обзор ServerGrade](screenshots/01-overview.png)
 
 ## Интерфейс
