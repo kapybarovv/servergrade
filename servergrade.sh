@@ -385,40 +385,56 @@ fmt_eta() {
     if (( v < 90 )); then printf '≈%d с' "$v"; else printf '≈%d мин' $(( (v + 30) / 60 )); fi
 }
 
-# Единая строка состояния мультитеста. Прогресс взвешен по ожидаемой
-# длительности этапов, поэтому короткая геопроверка и долгий YABS не выглядят
-# одинаковыми. После 95% текущего этапа шкала ждёт реального завершения.
-mt_progress_line() {
+# Закреплённая трёхстрочная панель, как status area в nano. Верх терминала
+# остаётся областью прокрутки с живым выводом теста, нижние строки не уезжают.
+mt_progress_panel() {
     local title="$1" elapsed="$2" expected="$3" done_weight="$4" total_weight="$5"
-    local current=$elapsed pct eta fill empty bar width=28
+    local step="$6" steps="$7" panel_top="$8" cols="$9"
+    local current=$elapsed pct eta fill empty bar rest width=$((cols-31))
+    (( width < 12 )) && width=12; (( width > 46 )) && width=46
     (( current > expected * 95 / 100 )) && current=$(( expected * 95 / 100 ))
     pct=$(( (done_weight + current) * 100 / total_weight ))
     (( pct > 99 )) && pct=99
     eta=$(( total_weight - done_weight - elapsed )); (( eta < 0 )) && eta=0
     fill=$(( pct * width / 100 )); empty=$(( width - fill ))
     printf -v bar '%*s' "$fill" ''; bar=${bar// /━}
-    printf -v _rest '%*s' "$empty" ''; _rest=${_rest// /─}
-    printf '\r\033[K  %b%s%b%s  %3d%%  %-24s  ETA %s' "$GREEN" "$bar" "$NC" "$_rest" "$pct" "$(vcut "$title" 24)" "$(fmt_eta "$eta")"
+    printf -v rest '%*s' "$empty" ''; rest=${rest// /─}
+    printf '\0337'
+    printf '\033[%d;1H\033[48;5;236m\033[38;5;252m\033[K  ТЕСТ %d/%d  %s' "$panel_top" "$step" "$steps" "$(vcut "$title" "$((cols-18))")"
+    printf '\033[%d;1H\033[48;5;236m\033[38;5;252m\033[K  %b%s\033[38;5;252m\033[48;5;236m%s  %3d%%   прошло %s   ETA %s' "$((panel_top+1))" "$GREEN" "$bar" "$rest" "$pct" "$(fmt_eta "$elapsed")" "$(fmt_eta "$eta")"
+    printf '\033[%d;1H\033[48;5;236m\033[38;5;245m\033[K  Ctrl+C — пропустить текущий тест\033[0m' "$((panel_top+2))"
+    printf '\0338'
 }
 
 run_test_with_progress() {
-    local fn="$1" logfile="$2" title="$3" expected="$4" done_weight="$5" total_weight="$6"
-    local started=$SECONDS rc live="${logfile}.runner"
+    local fn="$1" logfile="$2" title="$3" expected="$4" done_weight="$5" total_weight="$6" step="$7" steps="$8"
+    local started=$SECONDS rc live="${logfile}.runner" next_line=1 lines_now
+    local rows cols panel_top scroll_bottom
     if [[ ! -t 1 || "${TERM:-}" == "dumb" ]]; then
         capture_test "$fn" "$logfile"
         return $?
     fi
 
+    rows=$(tput lines 2>/dev/null || echo 24); cols=$(tput cols 2>/dev/null || echo 80)
+    (( rows < 10 )) && rows=24; (( cols < 48 )) && cols=48
+    panel_top=$((rows-2)); scroll_bottom=$((rows-3))
     capture_test "$fn" "$logfile" >"$live" 2>&1 &
     MT_ACTIVE_PID=$!
-    printf '\033[?25l'
+    printf '\033[?25l\033[1;%dr\033[%d;1H' "$scroll_bottom" "$scroll_bottom"
     while kill -0 "$MT_ACTIVE_PID" 2>/dev/null; do
-        mt_progress_line "$title" "$((SECONDS-started))" "$expected" "$done_weight" "$total_weight"
-        sleep .18
+        lines_now=$(wc -l < "$live" 2>/dev/null || echo 0)
+        if (( lines_now >= next_line )); then
+            sed -n "${next_line},${lines_now}p" "$live" | strip_ansi
+            next_line=$((lines_now+1))
+        fi
+        mt_progress_panel "$title" "$((SECONDS-started))" "$expected" "$done_weight" "$total_weight" "$step" "$steps" "$panel_top" "$cols"
+        sleep .25
     done
     wait "$MT_ACTIVE_PID"; rc=$?
     MT_ACTIVE_PID=""
-    printf '\r\033[K\033[?25h'
+    lines_now=$(wc -l < "$live" 2>/dev/null || echo 0)
+    (( lines_now >= next_line )) && sed -n "${next_line},${lines_now}p" "$live" | strip_ansi
+    printf '\033[r\033[%d;1H\033[J\033[?25h' "$panel_top"
     if (( rc == 0 )); then
         printf "  ${GREEN}✓${NC} %s  ${YELLOW}%s${NC}\n" "$title" "$(fmt_eta "$((SECONDS-started))")"
     elif (( MULTITEST_SKIPPED == 0 )); then
@@ -662,7 +678,7 @@ run_all() {
         MULTITEST_SKIPPED=0
         trap multitest_skip_handler INT
         run_test_with_progress "${test_funcs[$i]}" "${test_log[$i]}" "${test_names[$i]}" \
-            "${test_secs[$i]}" "$done_weight" "$total_weight"
+            "${test_secs[$i]}" "$done_weight" "$total_weight" "$num" "$total"
         trap - INT
 
         if [[ $MULTITEST_SKIPPED -eq 1 ]]; then
