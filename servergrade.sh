@@ -24,6 +24,7 @@ MT_UA="Mozilla/5.0 (X11; Linux x86_64) servergrade/${SCRIPT_VERSION}"
 # публикацию можно явно: SERVERGRADE_PUBLISH=0 servergrade
 SERVERGRADE_PUBLISH="${SERVERGRADE_PUBLISH:-1}"
 SERVERGRADE_PUBLISH_URL="${SERVERGRADE_PUBLISH_URL:-https://servergrade-results.kapybarovv.workers.dev/api/results}"
+SERVERGRADE_REPORT_MODE="${SERVERGRADE_REPORT_MODE:-ask}" # ask | visual | terminal
 MT_RUN_ID=""
 
 # Спонсор: подпись в подвале сводки (см. sv_sponsor) и блок в главном меню
@@ -454,6 +455,19 @@ mt_request_challenge() {
     fi
 }
 
+mt_choose_report_mode() {
+    case "$SERVERGRADE_REPORT_MODE" in visual|terminal) return 0;; esac
+    SERVERGRADE_REPORT_MODE="visual"
+    [[ -t 0 && -t 1 && "${TERM:-dumb}" != "dumb" ]] || return 0
+    echo -e "  ${BOLD}Формат публичного отчёта:${NC}"
+    echo -e "    ${GREEN}1)${NC} Графический  ${CYAN}· страницы и lightbox${NC}"
+    echo -e "    ${GREEN}2)${NC} Терминальный  ${CYAN}· только данные, без изображений${NC}"
+    echo -ne "  ${BOLD}Выбор (Enter = 1): ${NC}"
+    local choice=""; read -r choice
+    [[ "$choice" == "2" ]] && SERVERGRADE_REPORT_MODE="terminal"
+    echo ""
+}
+
 run_single_tracked() {
     mt_run_activity start
     "$1"
@@ -700,6 +714,7 @@ run_all() {
     echo -e "  ${YELLOW}Ctrl+C${NC} во время теста — пропустить текущий"
     echo -e "  Тесты идут автоматически; нажмите любую клавишу, чтобы выбрать вручную."
     echo ""
+    mt_choose_report_mode
     mt_request_challenge
     install_deps_for "${test_funcs[@]}" || return 1
     mt_run_activity start
@@ -1276,7 +1291,6 @@ publish_result_page() {
     printf '%s' "$page" > "$SUMMARY_DIR/public-url.txt"
     printf '%s' "$id" > "$SUMMARY_DIR/public-id.txt"
     printf '%s' "$token" > "$SUMMARY_DIR/upload-token.txt"
-    echo -e "  ${GREEN}${BOLD}Результаты загружены:${NC} ${BOLD}${page}${NC}"
 }
 
 upload_result_assets() {
@@ -3126,6 +3140,20 @@ step_upload_album() {
     cp "$SUMMARY_DIR/public-url.txt" "$SUMMARY_DIR/url.txt"
 }
 
+step_publish_terminal() {
+    gather_system_facts
+    publish_result_page "" || return 1
+    cp "$SUMMARY_DIR/public-url.txt" "$SUMMARY_DIR/url.txt"
+}
+
+print_report_link() {
+    local url
+    url=$(cat "$SUMMARY_DIR/url.txt" 2>/dev/null)
+    [[ "$url" == https://* ]] || return 1
+    echo ""
+    echo -e "${BOLD}${GREEN}${url}${NC}"
+}
+
 # Русское склонение числительных: 1 день / 2 дня / 5 дней.
 ru_plural() {
     local n=$1 one=$2 few=$3 many=$4
@@ -3171,16 +3199,7 @@ render_grouped_summary() {
         return 1
     fi
 
-    local url dir="$SUMMARY_DIR/pages" n
-    url=$(cat "$SUMMARY_DIR/url.txt")
-    n=$(wc -l < "$SUMMARY_DIR/pages.list" | tr -d ' ')
-    echo ""
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "  ${BOLD}${GREEN}Результаты загружены:${NC} ${BOLD}${url}${NC}"
-    echo -e "  ${CYAN}Страниц: ${BOLD}${n}${NC}${CYAN} - обзор и категории.${NC}"
-    echo -e "  ${YELLOW}Оригиналы лежат тут:${NC} ${BOLD}${dir}${NC}"
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    return 0
+    print_report_link
 }
 
 render_album_summary() {
@@ -3199,21 +3218,10 @@ render_album_summary() {
         return 1
     fi
 
-    local url dir="$SUMMARY_DIR/pages"
-    url=$(cat "$SUMMARY_DIR/url.txt")
-    echo ""
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    echo -e "  ${BOLD}${GREEN}Результаты загружены:${NC} ${BOLD}${url}${NC}"
-    echo -e "  ${CYAN}Страниц: ${BOLD}${n}${NC}${CYAN} — обложка и по одной на тест.${NC}"
-    echo -e "  ${YELLOW}Оригиналы лежат тут:${NC} ${BOLD}${dir}${NC}"
-    echo -e "    ${YELLOW}например: ${BOLD}scp -r root@<host>:${dir} .${NC}"
-    echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-    return 0
+    print_report_link
 }
 
 render_and_upload_summary() {
-    print_separator "Формирую сводку (изображение)"
-
     if [[ -z "$SUMMARY_DIR" || ! -d "$SUMMARY_DIR" ]]; then
         SUMMARY_DIR=$(mktemp -d 2>/dev/null) || {
             echo -e "${YELLOW}Не удалось создать каталог для сводки — пропускаю.${NC}"
@@ -3221,6 +3229,17 @@ render_and_upload_summary() {
         }
     fi
     rm -f "$SUMMARY_DIR/url.txt" "$SUMMARY_DIR/out.path" "$SUMMARY_DIR/expires.txt"
+
+    if [[ "$SERVERGRADE_REPORT_MODE" == "terminal" ]]; then
+        if spin_run "Публикую терминальный отчёт" step_publish_terminal; then
+            print_report_link
+        else
+            echo -e "  ${YELLOW}Не удалось опубликовать отчёт.${NC}"
+        fi
+        return 0
+    fi
+
+    print_separator "Формирую графический отчёт"
 
     spin_run "Устанавливаю зависимости для картинки" step_render_deps
 
@@ -3243,12 +3262,7 @@ render_and_upload_summary() {
     printf '%s\n' "$SUMMARY_DIR/summary.svg" > "$SUMMARY_DIR/pages.list"
 
     if spin_run "Загружаю результат на ServerGrade" step_upload_album; then
-        local url
-        url=$(cat "$SUMMARY_DIR/url.txt")
-        echo ""
-        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
-        echo -e "  ${BOLD}${GREEN}Результаты загружены:${NC} ${BOLD}${url}${NC}"
-        echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
+        print_report_link
     else
         echo -e "  ${YELLOW}Загрузка не удалась — результат сохранён локально: ${out}${NC}"
         echo -e "  ${YELLOW}Скопируйте: scp root@<host>:${out} .${NC}"
