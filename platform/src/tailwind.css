@@ -1,0 +1,17 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer components {
+  .language-switch {
+    @apply inline-flex items-center gap-1 rounded-full border border-white/10 bg-white/[0.035] p-1;
+  }
+
+  .language-option {
+    @apply rounded-full px-2.5 py-1 text-[10px] font-bold text-neutral-500 transition-colors hover:text-neutral-200;
+  }
+
+  .language-option[aria-current="true"] {
+    @apply bg-neutral-800 text-neutral-100;
+  }
+}

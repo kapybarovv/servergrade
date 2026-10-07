@@ -3,12 +3,16 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build:css": "tailwindcss -i ./src/tailwind.css -o ./src/tailwind.generated.css --minify",
+    "predev": "npm run build:css",
     "dev": "wrangler dev",
+    "predeploy": "npm run build:css",
     "deploy": "wrangler deploy",
     "db:local": "wrangler d1 execute servergrade --local --file=./schema.sql",
     "db:remote": "wrangler d1 execute servergrade --remote --file=./schema.sql"
   },
   "devDependencies": {
+    "tailwindcss": "^3.4.17",
     "wrangler": "^4.0.0"
   }
 }

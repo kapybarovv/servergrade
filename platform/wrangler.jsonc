@@ -3,6 +3,13 @@
   "name": "servergrade-results",
   "main": "src/index.js",
   "compatibility_date": "2026-10-01",
+  "rules": [
+    {
+      "type": "Text",
+      "globs": ["**/*.generated.css"],
+      "fallthrough": true
+    }
+  ],
   "d1_databases": [
     {
       "binding": "DB",
