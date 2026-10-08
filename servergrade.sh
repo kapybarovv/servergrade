@@ -1,10 +1,38 @@
 #!/bin/bash
 
+# `curl | bash` на старых минимальных образах Debian часто стартует с
+# LANG/LC_ALL=C. Bash тогда считает UTF-8 побайтно: интерактивное меню режет
+# кириллицу посередине символа и терминал показывает `��`. Выбираем уже
+# установленную UTF-8 locale без генерации новых locale и без лишних пакетов.
+ensure_utf8_locale() {
+    local current="${LC_ALL:-${LC_CTYPE:-${LANG:-}}}" candidate available=""
+    [[ "$current" == *[Uu][Tt][Ff]* ]] && return 0
+
+    if command -v locale &>/dev/null; then
+        available=$(locale -a 2>/dev/null || true)
+        for candidate in C.UTF-8 C.utf8 en_US.UTF-8 en_US.utf8; do
+            if printf '%s\n' "$available" | grep -Fxiq "$candidate"; then
+                export LANG="$candidate" LC_ALL="$candidate"
+                return 0
+            fi
+        done
+    fi
+
+    # glibc на Debian поддерживает C.UTF-8 даже на части образов, где locale -a
+    # его не перечисляет. Проверяем запуском отдельного процесса, чтобы не
+    # оставлять shell с предупреждением о несуществующей locale.
+    if LC_ALL=C.UTF-8 locale charmap 2>/dev/null | grep -Fqx UTF-8; then
+        export LANG=C.UTF-8 LC_ALL=C.UTF-8
+    fi
+}
+
+ensure_utf8_locale
+
 # ============================================================
 #  ServerGrade — интерактивная диагностика сервера
 # ============================================================
 
-SCRIPT_VERSION="1.5.0"
+SCRIPT_VERSION="1.5.1"
 REPO_URL="https://raw.githubusercontent.com/kapybarovv/servergrade/main/servergrade.sh"
 
 # Цвета
@@ -227,14 +255,20 @@ apt_install_package() {
         -o Acquire::Retries=5 --fix-missing install -y "$pkg" && return 0
 
     # После EOL security-архив старого Debian иногда ещё публикует индекс со
-    # ссылками на уже снятые .deb. Не переписываем sources.list: просим APT
-    # взять согласованный пакет и его зависимости из базового suite.
+    # ссылками на уже снятые .deb. Не переписываем sources.list: задаём базовый
+    # suite target release для ВСЕГО дерева зависимостей. Запись pkg/suite
+    # фиксирует только верхний пакет, а libiperf0/libjq1 и другие зависимости
+    # всё равно выбираются из битого security — именно это и давало повторный
+    # 404. --allow-downgrades нужен, если первая попытка уже успела поставить
+    # часть более новых security-библиотек.
     local codename=""
     [[ -r /etc/os-release ]] && codename=$(sed -n 's/^VERSION_CODENAME=//p' /etc/os-release | tr -d '"' | head -1)
     if [[ -n "$codename" ]]; then
         echo -e "${YELLOW}Security-ревизия недоступна — пробую базовый репозиторий ${codename}...${NC}"
         "${elevate[@]}" env DEBIAN_FRONTEND=noninteractive apt-get \
-            -o Acquire::Retries=5 install -y "${pkg}/${codename}" && return 0
+            -o Acquire::Retries=5 \
+            -o APT::Default-Release="${codename}" \
+            --allow-downgrades --fix-missing install -y "$pkg" && return 0
     fi
     return 1
 }
