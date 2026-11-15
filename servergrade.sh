@@ -1252,7 +1252,15 @@ upload_report() {
 # оценку и возвращает одноразовый токен для загрузки страниц отчёта.
 publish_result_page() {
     local report_url="${1:-}" response page id token metrics_blob="" services_blob="" statuses_blob="" terminal_blob="" fn line idx name st pages_expected=0
+    local response_file error_file http_code curl_rc=0
     [[ "$SERVERGRADE_PUBLISH" == "1" && -n "$SERVERGRADE_PUBLISH_URL" ]] || return 0
+    # Если основной результат уже создан, повторно POST /api/results не делаем.
+    # Это важно после частичного сбоя загрузки изображений: сам замер уже живёт
+    # на сайте и не должен превращаться в дубликат.
+    if [[ -s "$SUMMARY_DIR/public-url.txt" ]]; then
+        page=$(cat "$SUMMARY_DIR/public-url.txt" 2>/dev/null)
+        [[ "$page" == https://* ]] && return 0
+    fi
     mt_calculate_score
     for idx in "${!MT_CAT_FUNCS[@]}"; do
         fn="${MT_CAT_FUNCS[$idx]}"; name="${MT_CAT_NAMES[$idx]}"; st="${MT_STATUS[$fn]:-не запускался}"
@@ -1278,7 +1286,10 @@ publish_result_page() {
     terminal_blob="${terminal_blob:0:180000}"
     [[ -s "$SUMMARY_DIR/pages.list" ]] && pages_expected=$(wc -l < "$SUMMARY_DIR/pages.list" | tr -d '[:space:]')
     [[ "$pages_expected" =~ ^[0-9]+$ ]] || pages_expected=0
-    response=$(curl -fsS --max-time 20 -X POST \
+    response_file="$SUMMARY_DIR/publish-response.txt"
+    error_file="$SUMMARY_DIR/publish-error.txt"
+    : > "$response_file"; : > "$error_file"
+    http_code=$(curl -sS --connect-timeout 15 --max-time 60 -o "$response_file" -w '%{http_code}' -X POST \
         -H 'Content-Type: application/x-www-form-urlencoded' \
         --data-urlencode "challenge_id=$MT_CHALLENGE_ID" \
         --data-urlencode "nonce=$MT_CHALLENGE_NONCE" \
@@ -1310,14 +1321,26 @@ publish_result_page() {
         --data-urlencode "terminal_report=$terminal_blob" \
         --data-urlencode "report_url=$report_url" \
         --data-urlencode "runner_version=$SCRIPT_VERSION" \
-        "$SERVERGRADE_PUBLISH_URL" 2>/dev/null) || {
-            echo -e "  ${YELLOW}Публичная страница не создана: API недоступен.${NC}"
-            return 1
-        }
+        "$SERVERGRADE_PUBLISH_URL" 2>"$error_file") || curl_rc=$?
+    response=$(cat "$response_file" 2>/dev/null)
+    if (( curl_rc != 0 )); then
+        echo -e "  ${YELLOW}Публичная страница не создана: ошибка соединения curl ${curl_rc}.${NC}"
+        [[ -s "$error_file" ]] && sed -e 's/^/      /' "$error_file" | tail -3
+        return 1
+    fi
+    if [[ ! "$http_code" =~ ^2[0-9][0-9]$ ]]; then
+        echo -e "  ${YELLOW}Публичная страница не создана: API вернул HTTP ${http_code:-000}.${NC}"
+        [[ -n "$response" ]] && printf '      %.300s\n' "$response"
+        return 1
+    fi
     page=$(printf '%s' "$response" | grep -oE '"url"[[:space:]]*:[[:space:]]*"[^"]+"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/')
     id=$(printf '%s' "$response" | grep -oE '"id"[[:space:]]*:[[:space:]]*"[0-9]+"' | head -1 | grep -oE '[0-9]+')
     token=$(printf '%s' "$response" | grep -oE '"upload_token"[[:space:]]*:[[:space:]]*"[a-f0-9]+"' | head -1 | sed 's/.*"\([^"]*\)"$/\1/')
-    [[ "$page" == https://* ]] || return 1
+    if [[ "$page" != https://* ]]; then
+        echo -e "  ${YELLOW}Публичная страница не создана: API вернул некорректный ответ.${NC}"
+        [[ -n "$response" ]] && printf '      %.300s\n' "$response"
+        return 1
+    fi
     printf '%s' "$page" > "$SUMMARY_DIR/public-url.txt"
     printf '%s' "$id" > "$SUMMARY_DIR/public-id.txt"
     printf '%s' "$token" > "$SUMMARY_DIR/upload-token.txt"
@@ -3166,7 +3189,32 @@ step_upload_album() {
     [[ -s "$SUMMARY_DIR/pages.list" ]] || return 1
     gather_system_facts
     publish_result_page "" || return 1
-    upload_result_assets || return 1
+    # Ссылка на основной отчёт важнее изображений. Записываем её сразу:
+    # сбой отдельной SVG-страницы не должен скрывать уже опубликованный замер.
+    cp "$SUMMARY_DIR/public-url.txt" "$SUMMARY_DIR/url.txt" || return 1
+    if ! upload_result_assets; then
+        echo -e "  ${YELLOW}Отчёт опубликован, но не все изображения загрузились.${NC}"
+    fi
+    return 0
+}
+
+# Аварийная публикация без изображений. Полные результаты и терминальный лог
+# всё равно попадут на сайт, даже если на VPS нет рабочего SVG/PNG-рендерера.
+publish_result_without_assets() {
+    local saved_list=""
+    [[ "$SERVERGRADE_PUBLISH" == "1" ]] || return 1
+    if [[ -s "$SUMMARY_DIR/public-url.txt" ]]; then
+        cp "$SUMMARY_DIR/public-url.txt" "$SUMMARY_DIR/url.txt" && return 0
+    fi
+    if [[ -e "$SUMMARY_DIR/pages.list" ]]; then
+        saved_list="$SUMMARY_DIR/pages.list.pending"
+        mv "$SUMMARY_DIR/pages.list" "$saved_list" || return 1
+    fi
+    gather_system_facts
+    publish_result_page ""
+    local rc=$?
+    [[ -n "$saved_list" && -e "$saved_list" ]] && mv "$saved_list" "$SUMMARY_DIR/pages.list"
+    (( rc == 0 )) || return "$rc"
     cp "$SUMMARY_DIR/public-url.txt" "$SUMMARY_DIR/url.txt"
 }
 
@@ -3263,7 +3311,12 @@ render_and_upload_summary() {
     # дальше — прежний путь: одна длинная картинка и перебор файлообменников
 
     if ! spin_run "Собираю карточку" step_build_svg; then
-        echo -e "  ${YELLOW}Не удалось собрать карточку — сводки не будет.${NC}"
+        echo -e "  ${YELLOW}Не удалось собрать картинку — публикую текстовые результаты.${NC}"
+        if spin_run "Публикую результат на ServerGrade" publish_result_without_assets; then
+            print_report_link
+        else
+            echo -e "  ${YELLOW}Результат не опубликован. Причина указана выше.${NC}"
+        fi
         return 0
     fi
 
@@ -3279,8 +3332,13 @@ render_and_upload_summary() {
     if spin_run "Загружаю результат на ServerGrade" step_upload_album; then
         print_report_link
     else
-        echo -e "  ${YELLOW}Загрузка не удалась — результат сохранён локально: ${out}${NC}"
-        echo -e "  ${YELLOW}Скопируйте: scp root@<host>:${out} .${NC}"
+        echo -e "  ${YELLOW}Картинки не загрузились — публикую текстовые результаты.${NC}"
+        if spin_run "Публикую результат на ServerGrade" publish_result_without_assets; then
+            print_report_link
+        else
+            echo -e "  ${YELLOW}Результат не опубликован. Локальный файл: ${out}${NC}"
+            echo -e "  ${YELLOW}Скопируйте: scp root@<host>:${out} .${NC}"
+        fi
     fi
 }
 
