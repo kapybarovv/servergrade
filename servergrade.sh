@@ -32,7 +32,7 @@ ensure_utf8_locale
 #  ServerGrade — интерактивная диагностика сервера
 # ============================================================
 
-SCRIPT_VERSION="1.5.1"
+SCRIPT_VERSION="1.5.2"
 REPO_URL="https://raw.githubusercontent.com/kapybarovv/servergrade/main/servergrade.sh"
 
 # Цвета
@@ -44,8 +44,7 @@ BOLD='\033[1m'
 NC='\033[0m'
 
 # Состояние сводки мультитеста
-SUMMARY_DIR=""             # /tmp/multitest-summary-<ts>
-SUMMARY_TS=""
+SUMMARY_DIR=""             # отдельный временный каталог на каждый прогон
 SCRIPT_CAPTURE="util"      # util | busybox
 MT_UA="Mozilla/5.0 (X11; Linux x86_64) servergrade/${SCRIPT_VERSION}"
 # Официальный SaaS принимает пользовательские замеры автоматически. Отключить
@@ -488,14 +487,6 @@ mt_request_challenge() {
     fi
 }
 
-run_single_tracked() {
-    mt_run_activity start
-    "$1"
-    local rc=$?
-    mt_run_activity end
-    return $rc
-}
-
 # Секунды -> «≈40 c» / «≈12 мин».
 fmt_eta() {
     local v=$1
@@ -645,7 +636,8 @@ mt_select_tests() {
 }
 
 run_all() {
-    print_separator "МУЛЬТИТЕСТ — выбор тестов"
+    local single="${1:-}"
+    [[ -n "$single" ]] || print_separator "МУЛЬТИТЕСТ — выбор тестов"
 
     # --- Полный каталог тестов (порядок = нумерация в главном меню) ---
     # Оценки времени грубые, порядок величины: нужны, чтобы прикинуть цену выбора.
@@ -669,7 +661,9 @@ run_all() {
     # --- Выбор тестов ---
     local -a MT_SEL=()
     local k idx
-    if [[ -t 0 && -t 1 && "${TERM:-dumb}" != "dumb" ]]; then
+    if [[ "$single" =~ ^([1-9]|1[01])$ ]]; then
+        MT_SEL[$((single - 1))]=1
+    elif [[ -t 0 && -t 1 && "${TERM:-dumb}" != "dumb" ]]; then
         if ! mt_select_tests; then
             echo -e "\n  ${YELLOW}Мультитест отменён.${NC}"
             return 0
@@ -732,10 +726,14 @@ run_all() {
     done
     echo ""
     echo -e "  ${YELLOW}Ctrl+C${NC} во время теста — пропустить текущий"
-    echo -e "  Тесты идут автоматически; нажмите любую клавишу, чтобы выбрать вручную."
+    [[ -n "$single" ]] || echo -e "  Тесты идут автоматически; нажмите любую клавишу, чтобы выбрать вручную."
     echo ""
-    mt_request_challenge
     install_deps_for "${test_funcs[@]}" || return 1
+    SUMMARY_DIR=$(mktemp -d "${TMPDIR:-/tmp}/multitest-summary.XXXXXXXX") || {
+        echo -e "${RED}Не удалось создать каталог для результатов.${NC}"
+        return 1
+    }
+    mt_request_challenge
     mt_run_activity start
 
     # Каталог + статусы для сводки (в картинке показываем и невыбранные тесты)
@@ -749,10 +747,6 @@ run_all() {
     test_metric=()
     test_log=()
 
-    # Каталог для логов тестов и файлов сводки
-    SUMMARY_TS=$(date +%Y%m%d-%H%M%S)
-    SUMMARY_DIR="/tmp/multitest-summary-${SUMMARY_TS}"
-    mkdir -p "$SUMMARY_DIR" 2>/dev/null
     detect_script_flavor
 
     local total=${#test_funcs[@]}
@@ -770,7 +764,7 @@ run_all() {
 
         # --- Автостарт через 5 c, любая клавиша → ручной выбор ---
         local action="" _key=""
-        if [[ -t 0 ]]; then
+        if [[ -z "$single" && -t 0 ]]; then
             echo -ne "  ${CYAN}Автозапуск через ${BOLD}5${NC}${CYAN}c — нажмите любую клавишу для ручного выбора...${NC} "
             if read -r -t 5 -n 1 _key; then
                 echo ""
@@ -1248,42 +1242,38 @@ upload_report() {
     return 1
 }
 
-# Публикация замера: сервер принимает сводные поля, сам определяет буквенную
-# оценку и возвращает одноразовый токен для загрузки страниц отчёта.
+write_result_rows() {
+    local suffix="$1" fn file
+    for fn in "${MT_CAT_FUNCS[@]}"; do
+        file="$SUMMARY_DIR/$fn.$suffix"
+        [[ -s "$file" ]] || continue
+        awk -v test="$fn" '{print test "\037" $0}' "$file"
+    done
+}
+
+# Worker считает рейтинг и выдаёт короткоживущий токен для картинок.
 publish_result_page() {
-    local report_url="${1:-}" response page id token metrics_blob="" services_blob="" statuses_blob="" terminal_blob="" fn line idx name st pages_expected=0
+    local response page id token fn idx pages_expected=0
     local response_file error_file http_code curl_rc=0
-    [[ "$SERVERGRADE_PUBLISH" == "1" && -n "$SERVERGRADE_PUBLISH_URL" ]] || return 0
-    # Если основной результат уже создан, повторно POST /api/results не делаем.
-    # Это важно после частичного сбоя загрузки изображений: сам замер уже живёт
-    # на сайте и не должен превращаться в дубликат.
-    if [[ -s "$SUMMARY_DIR/public-url.txt" ]]; then
-        page=$(cat "$SUMMARY_DIR/public-url.txt" 2>/dev/null)
-        [[ "$page" == https://* ]] && return 0
-    fi
-    mt_calculate_score
+    local statuses_file="$SUMMARY_DIR/statuses.form" metrics_file="$SUMMARY_DIR/metrics.form"
+    local services_file="$SUMMARY_DIR/services.form" terminal_file="$SUMMARY_DIR/terminal.form"
     for idx in "${!MT_CAT_FUNCS[@]}"; do
-        fn="${MT_CAT_FUNCS[$idx]}"; name="${MT_CAT_NAMES[$idx]}"; st="${MT_STATUS[$fn]:-не запускался}"
-        printf -v statuses_blob '%s%s\x1f%s\x1f%s\n' "$statuses_blob" "$fn" "$name" "$st"
-        if [[ -s "$SUMMARY_DIR/$fn.metrics" ]]; then
-            while IFS= read -r line; do printf -v metrics_blob '%s%s\x1f%s\n' "$metrics_blob" "$fn" "$line"; done < "$SUMMARY_DIR/$fn.metrics"
-        fi
-        if [[ -s "$SUMMARY_DIR/$fn.services" ]]; then
-            while IFS= read -r line; do printf -v services_blob '%s%s\x1f%s\n' "$services_blob" "$fn" "$line"; done < "$SUMMARY_DIR/$fn.services"
-        fi
-    done
-    metrics_blob="${metrics_blob:0:48000}"
-    services_blob="${services_blob:0:48000}"
-    for idx in "${!test_log[@]}"; do
-        [[ -s "${test_log[$idx]}" ]] || continue
-        printf -v terminal_blob '%s\n\n===== %s =====\n' "$terminal_blob" "${test_names[$idx]:-Тест $((idx+1))}"
-        while IFS= read -r line; do
-            line=$(printf '%s\n' "$line" | strip_ansi)
-            printf -v terminal_blob '%s%s\n' "$terminal_blob" "$line"
-            (( ${#terminal_blob} >= 180000 )) && break 2
-        done < "${test_log[$idx]}"
-    done
-    terminal_blob="${terminal_blob:0:180000}"
+        fn="${MT_CAT_FUNCS[$idx]}"
+        printf '%s\x1f%s\x1f%s\n' "$fn" "${MT_CAT_NAMES[$idx]}" "${MT_STATUS[$fn]:-не запускался}"
+    done > "$statuses_file" || return 1
+
+    # Worker принимает до 900 000 байт формы. Каждый байт может занять три
+    # после URL-кодирования, поэтому ограничиваем сами файлы в байтах.
+    write_result_rows metrics | head -c 48000 > "$metrics_file" || return 1
+    write_result_rows services | head -c 48000 > "$services_file" || return 1
+    {
+        for idx in "${!test_log[@]}"; do
+            [[ -s "${test_log[$idx]}" ]] || continue
+            printf '\n\n===== %s =====\n' "${test_names[$idx]}"
+            strip_ansi < "${test_log[$idx]}"
+        done
+    } | head -c 180000 > "$terminal_file" || return 1
+
     [[ -s "$SUMMARY_DIR/pages.list" ]] && pages_expected=$(wc -l < "$SUMMARY_DIR/pages.list" | tr -d '[:space:]')
     [[ "$pages_expected" =~ ^[0-9]+$ ]] || pages_expected=0
     response_file="$SUMMARY_DIR/publish-response.txt"
@@ -1315,16 +1305,15 @@ publish_result_page() {
         --data-urlencode "load_avg=$SYS_LOAD" \
         --data-urlencode "has_ipv4=$([[ -n "$SYS_IP4" ]] && echo 1 || echo 0)" \
         --data-urlencode "has_ipv6=$([[ -n "$SYS_IP6" ]] && echo 1 || echo 0)" \
-        --data-urlencode "test_statuses=$statuses_blob" \
-        --data-urlencode "metrics=$metrics_blob" \
-        --data-urlencode "services=$services_blob" \
-        --data-urlencode "terminal_report=$terminal_blob" \
-        --data-urlencode "report_url=$report_url" \
+        --data-urlencode "test_statuses@$statuses_file" \
+        --data-urlencode "metrics@$metrics_file" \
+        --data-urlencode "services@$services_file" \
+        --data-urlencode "terminal_report@$terminal_file" \
         --data-urlencode "runner_version=$SCRIPT_VERSION" \
         "$SERVERGRADE_PUBLISH_URL" 2>"$error_file") || curl_rc=$?
     response=$(cat "$response_file" 2>/dev/null)
     if (( curl_rc != 0 )); then
-        echo -e "  ${YELLOW}Публичная страница не создана: ошибка соединения curl ${curl_rc}.${NC}"
+        echo -e "  ${YELLOW}Не удалось отправить отчёт (код ${curl_rc}).${NC}"
         [[ -s "$error_file" ]] && sed -e 's/^/      /' "$error_file" | tail -3
         return 1
     fi
@@ -1341,13 +1330,13 @@ publish_result_page() {
         [[ -n "$response" ]] && printf '      %.300s\n' "$response"
         return 1
     fi
-    printf '%s' "$page" > "$SUMMARY_DIR/public-url.txt"
-    printf '%s' "$id" > "$SUMMARY_DIR/public-id.txt"
-    printf '%s' "$token" > "$SUMMARY_DIR/upload-token.txt"
+    printf '%s' "$id" > "$SUMMARY_DIR/public-id.txt" &&
+    printf '%s' "$token" > "$SUMMARY_DIR/upload-token.txt" &&
+    printf '%s' "$page" > "$SUMMARY_DIR/url.txt"
 }
 
 upload_result_assets() {
-    local id token endpoint file svg name pos=0
+    local id token endpoint file name pos=0 failed=0
     id=$(cat "$SUMMARY_DIR/public-id.txt" 2>/dev/null); token=$(cat "$SUMMARY_DIR/upload-token.txt" 2>/dev/null)
     [[ "$id" =~ ^[0-9]{8}$ && -n "$token" ]] || return 1
     endpoint="${SERVERGRADE_PUBLISH_URL%/api/results}/api/results/${id}/assets"
@@ -1356,12 +1345,12 @@ upload_result_assets() {
         [[ "$file" == *.png ]] && file="${file%.png}.svg"
         [[ -s "$file" ]] || continue
         pos=$((pos+1)); (( pos <= 8 )) || break
-        svg=$(cat "$file"); name=$(basename "$file" .svg); name=${name#??-}; name=${name//-/ }
+        name=$(basename "$file" .svg); name=${name#??-}; name=${name//-/ }
         curl -fsS --max-time 45 -X POST -H 'Content-Type: application/x-www-form-urlencoded' \
             --data-urlencode "token=$token" --data-urlencode "position=$pos" \
-            --data-urlencode "name=$name" --data-urlencode "svg=$svg" "$endpoint" >/dev/null || return 1
+            --data-urlencode "name=$name" --data-urlencode "svg@$file" "$endpoint" >/dev/null || failed=1
     done < "$SUMMARY_DIR/pages.list"
-    (( pos > 0 ))
+    (( pos > 0 && failed == 0 ))
 }
 
 # Гарантирует наличие рендерера SVG->PNG (rsvg-convert, иначе ImageMagick).
@@ -3013,6 +3002,9 @@ spin_run() {
         echo -e "  ${msg}..."
         "$@" >"$log" 2>&1; rc=$?
         [[ $rc -eq 0 ]] && echo -e "  ${GREEN}готово${NC}" || echo -e "  ${RED}не вышло${NC}"
+        if (( rc != 0 )) && [[ -s "$log" ]]; then
+            tail -4 "$log" | sed 's/^/      /'
+        fi
         return $rc
     fi
 
@@ -3059,9 +3051,9 @@ step_render_deps() {
 }
 
 step_build_svg() {
-    gather_system_facts
-    build_summary_svg > "$SUMMARY_DIR/summary.svg"
-    [[ -s "$SUMMARY_DIR/summary.svg" ]]
+    build_summary_svg > "$SUMMARY_DIR/summary.svg" || return 1
+    [[ -s "$SUMMARY_DIR/summary.svg" ]] || return 1
+    printf '%s\n' "$SUMMARY_DIR/summary.svg" > "$SUMMARY_DIR/pages.list"
 }
 
 step_render_png() {
@@ -3097,7 +3089,7 @@ MT_PAGE_SCALE="${MT_PAGE_SCALE:-2}"
 MT_ALBUM="${MT_ALBUM:-2}"
 MT_ALBUM_MAX=64
 
-# Рендер одной страницы: <base>.svg -> <base>.png, путь дописывается в pages.list.
+# Рендер локального PNG при наличии конвертера. В манифест для сайта идёт SVG.
 # Высоту берём из MT_PAGE_H, который выставил построитель страницы: разбирать
 # её обратно из viewBox — лишний способ разойтись с тем, что нарисовано.
 mt_render_page() {
@@ -3110,14 +3102,12 @@ mt_render_page() {
     elif command -v magick       &>/dev/null; then magick  -density 220 -background none "$svg" -resize "${w}x${MT_MAXSIDE}>" "$png" 2>/dev/null
     elif command -v convert      &>/dev/null; then convert -density 220 -background none "$svg" -resize "${w}x${MT_MAXSIDE}>" "$png" 2>/dev/null
     fi
-    [[ -s "$png" ]] || return 1
-    printf '%s\n' "$png" >> "$SUMMARY_DIR/pages.list"
+    printf '%s\n' "$svg" >> "$SUMMARY_DIR/pages.list"
 }
 
 step_build_pages() {
     # ниже идёт rm -rf по этому пути — пустой SUMMARY_DIR превратил бы его в /pages
     [[ -n "$SUMMARY_DIR" && -d "$SUMMARY_DIR" ]] || return 1
-    gather_system_facts
     mt_style_init
     mt_album_plan
     mt_run_counters
@@ -3145,7 +3135,6 @@ step_build_pages() {
 
 step_build_grouped_pages() {
     [[ -n "$SUMMARY_DIR" && -d "$SUMMARY_DIR" ]] || return 1
-    gather_system_facts
     mt_style_init
     mt_album_plan
     mt_run_counters
@@ -3185,39 +3174,6 @@ step_build_grouped_pages() {
     [[ -s "$SUMMARY_DIR/pages.list" ]]
 }
 
-step_upload_album() {
-    [[ -s "$SUMMARY_DIR/pages.list" ]] || return 1
-    gather_system_facts
-    publish_result_page "" || return 1
-    # Ссылка на основной отчёт важнее изображений. Записываем её сразу:
-    # сбой отдельной SVG-страницы не должен скрывать уже опубликованный замер.
-    cp "$SUMMARY_DIR/public-url.txt" "$SUMMARY_DIR/url.txt" || return 1
-    if ! upload_result_assets; then
-        echo -e "  ${YELLOW}Отчёт опубликован, но не все изображения загрузились.${NC}"
-    fi
-    return 0
-}
-
-# Аварийная публикация без изображений. Полные результаты и терминальный лог
-# всё равно попадут на сайт, даже если на VPS нет рабочего SVG/PNG-рендерера.
-publish_result_without_assets() {
-    local saved_list=""
-    [[ "$SERVERGRADE_PUBLISH" == "1" ]] || return 1
-    if [[ -s "$SUMMARY_DIR/public-url.txt" ]]; then
-        cp "$SUMMARY_DIR/public-url.txt" "$SUMMARY_DIR/url.txt" && return 0
-    fi
-    if [[ -e "$SUMMARY_DIR/pages.list" ]]; then
-        saved_list="$SUMMARY_DIR/pages.list.pending"
-        mv "$SUMMARY_DIR/pages.list" "$saved_list" || return 1
-    fi
-    gather_system_facts
-    publish_result_page ""
-    local rc=$?
-    [[ -n "$saved_list" && -e "$saved_list" ]] && mv "$saved_list" "$SUMMARY_DIR/pages.list"
-    (( rc == 0 )) || return "$rc"
-    cp "$SUMMARY_DIR/public-url.txt" "$SUMMARY_DIR/url.txt"
-}
-
 print_report_link() {
     local url
     url=$(cat "$SUMMARY_DIR/url.txt" 2>/dev/null)
@@ -3253,93 +3209,51 @@ imgdb_life() {
     fi
 }
 
-# Строит картинку-сводку, рендерит в PNG (2x) и заливает на хостинг.
-# Альбом: обложка + по странице на тест, всё одним запросом на imgdb, в ответ
-# одна ссылка. Возвращает 0, только если ссылка на руках — иначе вызывающий
-# уходит на прежний путь с одной длинной картинкой.
-render_grouped_summary() {
-    mt_album_plan
-    (( ${#MT_PAGE_IDX[@]} > 0 )) || return 1
-
-    rm -f "$SUMMARY_DIR/pages.list"
-    if ! spin_run "Собираю категорийные страницы" step_build_grouped_pages; then
-        echo -e "  ${YELLOW}Категорийные страницы не собрались - соберу одной картинкой.${NC}"
-        return 1
-    fi
-    if ! spin_run "Загружаю результат на ServerGrade" step_upload_album; then
-        echo -e "  ${YELLOW}Результат не загрузился - соберу одной картинкой.${NC}"
-        return 1
-    fi
-
-    print_report_link
-}
-
-render_album_summary() {
+build_report_pages() {
     mt_album_plan
     local n=$(( ${#MT_PAGE_IDX[@]} + 1 ))
-    # прогона не было — альбому неоткуда взяться; выше потолка imgdb тоже нечего пробовать
-    (( ${#MT_PAGE_IDX[@]} > 0 && n <= MT_ALBUM_MAX )) || return 1
-
-    rm -f "$SUMMARY_DIR/pages.list"
-    if ! spin_run "Собираю страницы альбома (${n})" step_build_pages; then
-        echo -e "  ${YELLOW}Страницы не собрались — соберу одной картинкой.${NC}"
-        return 1
-    fi
-    if ! spin_run "Загружаю результат на ServerGrade" step_upload_album; then
-        echo -e "  ${YELLOW}Результат не загрузился — соберу одной картинкой.${NC}"
-        return 1
-    fi
-
-    print_report_link
-}
-
-render_and_upload_summary() {
-    if [[ -z "$SUMMARY_DIR" || ! -d "$SUMMARY_DIR" ]]; then
-        SUMMARY_DIR=$(mktemp -d 2>/dev/null) || {
-            echo -e "${YELLOW}Не удалось создать каталог для сводки — пропускаю.${NC}"
+    if (( n > 1 )); then
+        if [[ "$MT_ALBUM" == "2" ]] && spin_run "Собираю категорийные страницы" step_build_grouped_pages; then
             return 0
-        }
+        fi
+        if [[ "$MT_ALBUM" == "1" ]] && (( n <= MT_ALBUM_MAX )) && spin_run "Собираю страницы альбома (${n})" step_build_pages; then
+            return 0
+        fi
     fi
-    rm -f "$SUMMARY_DIR/url.txt" "$SUMMARY_DIR/out.path" "$SUMMARY_DIR/expires.txt"
 
-    print_separator "Формирую графический отчёт"
-
-    spin_run "Устанавливаю зависимости для картинки" step_render_deps
-
-    [[ "$MT_ALBUM" == "2" ]] && render_grouped_summary && return 0
-    [[ "$MT_ALBUM" == "1" ]] && render_album_summary && return 0
-    # дальше — прежний путь: одна длинная картинка и перебор файлообменников
-
-    if ! spin_run "Собираю карточку" step_build_svg; then
-        echo -e "  ${YELLOW}Не удалось собрать картинку — публикую текстовые результаты.${NC}"
-        if spin_run "Публикую результат на ServerGrade" publish_result_without_assets; then
-            print_report_link
-        else
-            echo -e "  ${YELLOW}Результат не опубликован. Причина указана выше.${NC}"
+    : > "$SUMMARY_DIR/pages.list"
+    if spin_run "Собираю карточку" step_build_svg; then
+        if command -v rsvg-convert &>/dev/null || command -v convert &>/dev/null || command -v magick &>/dev/null; then
+            spin_run "Рендерю локальный PNG" step_render_png || true
         fi
         return 0
     fi
+    return 1
+}
 
-    if ! spin_run "Рендерю PNG" step_render_png; then
-        echo -e "  ${YELLOW}PNG не отрендерился — загружу SVG (откроется в браузере).${NC}"
+render_and_upload_summary() {
+    local publish=0
+    [[ "$SERVERGRADE_PUBLISH" == "1" && -n "$SERVERGRADE_PUBLISH_URL" ]] && publish=1
+    print_separator "Формирую отчёт"
+    gather_system_facts
+    if (( ! publish )); then
+        spin_run "Устанавливаю зависимости для картинки" step_render_deps || true
     fi
-    local out; out=$(cat "$SUMMARY_DIR/out.path" 2>/dev/null)
-    [[ -n "$out" ]] || out="$SUMMARY_DIR/summary.svg"
-
-    echo -e "  Локально: ${BOLD}${out}${NC}"
-    printf '%s\n' "$SUMMARY_DIR/summary.svg" > "$SUMMARY_DIR/pages.list"
-
-    if spin_run "Загружаю результат на ServerGrade" step_upload_album; then
-        print_report_link
-    else
-        echo -e "  ${YELLOW}Картинки не загрузились — публикую текстовые результаты.${NC}"
-        if spin_run "Публикую результат на ServerGrade" publish_result_without_assets; then
-            print_report_link
-        else
-            echo -e "  ${YELLOW}Результат не опубликован. Локальный файл: ${out}${NC}"
-            echo -e "  ${YELLOW}Скопируйте: scp root@<host>:${out} .${NC}"
-        fi
+    if ! build_report_pages; then
+        echo -e "  ${YELLOW}Не удалось собрать изображения.${NC}"
     fi
+    if (( ! publish )); then
+        echo -e "  Публикация отключена. Локальные результаты: ${BOLD}${SUMMARY_DIR}${NC}"
+        return 0
+    fi
+    if ! spin_run "Публикую результат на ServerGrade" publish_result_page; then
+        echo -e "  ${YELLOW}Результат остался локально: ${SUMMARY_DIR}${NC}"
+        return 1
+    fi
+    if [[ -s "$SUMMARY_DIR/pages.list" ]] && ! spin_run "Загружаю изображения" upload_result_assets; then
+        echo -e "  ${YELLOW}Отчёт опубликован, часть изображений не загрузилась.${NC}"
+    fi
+    print_report_link
 }
 
 # ============================================================
@@ -3399,24 +3313,14 @@ while true; do
     # Ставим до отрисовки: сигнал может прийти и посреди печати блока.
     trap mt_menu_sigint INT
     show_menu
-    read -r choice
+    read -r choice || break
     trap - INT
     # Блок спонсора висит ниже строки ввода — стираем его до низа экрана,
     # иначе вывод теста ляжет прямо поверх букв.
     [[ "${MT_PROMO_BELOW:-0}" == "1" ]] && printf '\033[J'
 
     case "$choice" in
-        1)  run_single_tracked run_ip_region; pause_prompt ;;
-        2)  run_single_tracked run_censorcheck_geoblock; pause_prompt ;;
-        3)  run_single_tracked run_censorcheck_dpi; pause_prompt ;;
-        4)  run_single_tracked run_censorcheck_tlab; pause_prompt ;;
-        5)  run_single_tracked run_iperf3_ru; pause_prompt ;;
-        6)  run_single_tracked run_iperf3_tlab; pause_prompt ;;
-        7)  run_single_tracked run_yabs; pause_prompt ;;
-        8)  run_single_tracked run_ip_check_place; pause_prompt ;;
-        9)  run_single_tracked run_bench_sh; pause_prompt ;;
-        10) run_single_tracked run_ip_quality; pause_prompt ;;
-        11) run_single_tracked run_sysbench_cpu; pause_prompt ;;
+        [1-9]|10|11) run_all "$choice"; pause_prompt ;;
         12) run_all; pause_prompt ;;
         13) show_utilities_menu ;;
         0)  echo -e "${GREEN}До свидания!${NC}"; exit 0 ;;
