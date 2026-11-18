@@ -127,6 +127,33 @@ CREATE TABLE IF NOT EXISTS secure_upload_tokens (
   FOREIGN KEY (result_id) REFERENCES results(id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS admin_banners (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  title TEXT NOT NULL,
+  image_url TEXT NOT NULL DEFAULT '',
+  image_mime TEXT NOT NULL DEFAULT '',
+  image_data TEXT NOT NULL DEFAULT '',
+  target_url TEXT NOT NULL,
+  enabled INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0,1)),
+  sort_order INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS result_pins (
+  result_id TEXT PRIMARY KEY,
+  pinned_at TEXT NOT NULL,
+  FOREIGN KEY (result_id) REFERENCES results(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS admin_login_attempts (
+  key TEXT PRIMARY KEY,
+  failures INTEGER NOT NULL,
+  expires_at TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS admin_login_attempts_expires_at
+  ON admin_login_attempts(expires_at);
+
 -- Remove the retired synthetic seed range without touching user results.
 DELETE FROM result_assets WHERE result_id BETWEEN '91000001' AND '91000056';
 DELETE FROM secure_upload_tokens WHERE result_id BETWEEN '91000001' AND '91000056';

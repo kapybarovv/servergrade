@@ -1,4 +1,6 @@
 import tailwindStyles from "./tailwind.generated.css";
+import { ensureAdminSchema, handleAdminRequest, isAdmin, bannerImageResponse } from "./admin.js";
+import { renderAdminPage } from "./admin-ui.js";
 
 const headers = {
   "content-type": "text/html; charset=utf-8",
@@ -42,6 +44,65 @@ async function ensureRuntimeSchema(env) {
 
 function clientIp(request) {
   return request.headers.get("CF-Connecting-IP") || "0.0.0.0";
+}
+
+function publicOrigin(request, env) {
+  return new URL(env.PUBLIC_ORIGIN || request.url).origin;
+}
+
+// The previous account forwards API requests with signed original-client data.
+// Cross-account Worker subrequests replace Cloudflare's client IP header.
+async function legacyClientContext(request, env) {
+  const context = { ip: clientIp(request), cf: request.cf || {} };
+  const timestamp = request.headers.get("x-servergrade-bridge-time");
+  const metadata = request.headers.get("x-servergrade-bridge-client");
+  const signature = request.headers.get("x-servergrade-bridge-signature");
+  if (timestamp === null && metadata === null && signature === null) return { request, context };
+  if (!/^\d{13}$/.test(timestamp || "") || Math.abs(Date.now() - Number(timestamp)) > 60_000 || !metadata || metadata.length > 4096 || !/^[a-f0-9]{64}$/.test(signature || "")) {
+    return new Response("Invalid migration signature", { status: 403 });
+  }
+
+  const chunks = [];
+  let size = 0;
+  const reader = request.body?.getReader();
+  if (reader) {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > 1_500_000) {
+        await reader.cancel();
+        return new Response("Payload too large", { status: 413 });
+      }
+      chunks.push(value);
+    }
+  }
+  const body = new Uint8Array(size);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  const secret = await env.DB.prepare("SELECT value FROM app_secrets WHERE name='attestation-v1'").first();
+  if (!secret?.value) return new Response("Migration key unavailable", { status: 503 });
+  const url = new URL(request.url);
+  const digest = bytesHex(new Uint8Array(await crypto.subtle.digest("SHA-256", body)));
+  const message = JSON.stringify(["servergrade-migration-v1", timestamp, request.method, url.pathname + url.search, metadata, digest]);
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(secret.value), { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
+  const signatureBytes = Uint8Array.from(signature.match(/../g), (byte) => Number.parseInt(byte, 16));
+  if (!await crypto.subtle.verify("HMAC", key, signatureBytes, new TextEncoder().encode(message))) {
+    return new Response("Invalid migration signature", { status: 403 });
+  }
+  try {
+    const decoded = Uint8Array.from(atob(metadata), (character) => character.charCodeAt(0));
+    const forwarded = JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(decoded));
+    if (typeof forwarded.ip !== "string" || !/^[0-9a-fA-F:.]{3,64}$/.test(forwarded.ip) || !forwarded.cf || typeof forwarded.cf !== "object" || Array.isArray(forwarded.cf)) {
+      return new Response("Invalid migration client", { status: 403 });
+    }
+    return { request: new Request(request, { body }), context: forwarded };
+  } catch {
+    return new Response("Invalid migration client", { status: 403 });
+  }
 }
 
 function numeric(value) {
@@ -107,6 +168,7 @@ function icon(name) {
     search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
     arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>',
     star: '<path d="m12 2.7 2.8 5.7 6.3.9-4.6 4.5 1.1 6.3-5.6-3-5.6 3 1.1-6.3-4.6-4.5 6.3-.9z"/>',
+    pin: '<path d="M12 17v5"/><path d="M9 7V4.5L8 3h8l-1 1.5V7l3 3v3H6v-3z"/>',
   };
   return `<svg class="icon" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${paths[name] || ""}</svg>`;
 }
@@ -163,7 +225,39 @@ function resultId() {
 }
 
 function fullI18nScript() {
-  return responsiveLaunchGuideStyles() + mobileLaunchGuideStyles() + responsiveStabilityStyles() + starCountScript() + fullI18nRuntimeScript();
+  return responsiveLaunchGuideStyles() + mobileLaunchGuideStyles() + responsiveStabilityStyles() + starCountScript() + fullI18nRuntimeScript() + adminEntryScript();
+}
+
+function adminEntryScript() {
+  return `<style>
+    .pin-mark{display:inline-flex;align-items:center;margin-left:6px;color:var(--accent)}
+    .pin-mark .icon{width:13px;height:13px}
+    .ad-banners{display:grid;gap:12px;margin:0 0 28px;width:100%;min-width:0}
+    .ad-banner{display:block;overflow:hidden;border:1px solid var(--line);border-radius:18px;background:var(--surface);transition:opacity .18s ease}
+    .ad-banner:hover{opacity:.88}
+    .ad-banner img{display:block;width:100%;height:auto;max-width:100%}
+    @media(max-width:560px){.nav:has(.admin-entry) .github-stars:not(.admin-entry){display:none!important}}
+  </style><script>
+    (() => {
+      let count = 0;
+      let lastClick = 0;
+      document.addEventListener("click", event => {
+        if (!event.target.closest(".language-switch")) {
+          count = 0;
+          return;
+        }
+        const now = Date.now();
+        count = now - lastClick < 2000 ? count + 1 : 1;
+        lastClick = now;
+        if (count < 5 || document.querySelector(".admin-entry")) return;
+        const entry = document.createElement("a");
+        entry.href = "/admin";
+        entry.className = "github-stars admin-entry";
+        entry.textContent = "Admin";
+        document.querySelector(".nav-actions").append(entry);
+      });
+    })();
+  </script>`;
 }
 
 function starCountScript() {
@@ -282,12 +376,24 @@ function homeMotionScript() {
   return `<script>addEventListener("DOMContentLoaded",()=>{const hero=document.querySelector(".home-hero");if(!hero||matchMedia("(prefers-reduced-motion: reduce)").matches||!matchMedia("(hover: hover) and (pointer: fine)").matches)return;let currentX=0,currentY=0,targetX=0,targetY=0,frame=0;const tick=()=>{currentX+=(targetX-currentX)*.09;currentY+=(targetY-currentY)*.09;hero.style.setProperty("--ray-pointer-x",currentX.toFixed(2)+"px");hero.style.setProperty("--ray-pointer-y",currentY.toFixed(2)+"px");if(Math.abs(targetX-currentX)>.05||Math.abs(targetY-currentY)>.05)frame=requestAnimationFrame(tick);else frame=0};const animate=()=>{if(!frame)frame=requestAnimationFrame(tick)};hero.addEventListener("pointermove",event=>{const rect=hero.getBoundingClientRect();targetX=((event.clientX-rect.left)/rect.width-.5)*12;targetY=((event.clientY-rect.top)/rect.height-.5)*8;animate()});hero.addEventListener("pointerleave",()=>{targetX=0;targetY=0;animate()})})</script>`;
 }
 
-function renderHome(rows, stars, stats, activeRuns = []) {
-  const completedRows = rows.map((r) => { const href = `/test/${escapeHtml(r.id)}`; const verified = Number(r.verified) === 1; const search = [r.id, r.country, r.city, r.cpu, r.server_vendor, r.cores, r.ram, r.ram_type, r.disk, r.disk_type, r.score].filter(Boolean).join(" ").toLowerCase(); return `<tr data-result-row data-verified="${verified ? "verified" : "unverified"}" data-search="${escapeHtml(search)}"><td><a class="result-link" href="${href}">#${escapeHtml(r.id)}</a></td><td><a class="result-link regular" href="${href}">${location(r.country, r.city)}${present(r.cpu) ? `<span class="cpu">${present(r.server_vendor) ? `${escapeHtml(r.server_vendor)} · ` : ""}${escapeHtml(r.cpu)}</span>` : ""}</a></td><td><a class="result-link regular" href="${href}">${present(r.cores) ? escapeHtml(r.cores) : "—"}</a></td><td><a class="result-link regular" href="${href}">${present(r.ram) ? escapeHtml(r.ram) : "—"}${present(r.ram_type) ? `<span class="cpu">${escapeHtml(r.ram_type)}</span>` : ""}</a></td><td><a class="result-link regular" href="${href}">${present(r.disk) ? escapeHtml(r.disk) : "—"}${present(r.disk_type) ? `<span class="cpu">${escapeHtml(r.disk_type)}</span>` : ""}</a></td><td><a class="result-link score-cell" href="${href}">${clamp(r.score)}</a></td><td><a class="result-link" href="${href}"><span class="verification ${verified ? "" : "off"}">${verified ? "ВЕРИФИЦИРОВАНО" : "НЕ ПРОВЕРЕНО"}</span></a></td><td><a class="result-link open-link" href="${href}" aria-label="Открыть тест ${escapeHtml(r.id)}">${icon("arrow")}</a></td></tr>`; }).join("");
+function renderBanners(banners) {
+  if (!banners.length) return "";
+  const images = banners.map(banner => {
+    const image = `<img src="${escapeHtml(banner.image_url)}" alt="${escapeHtml(banner.title)}" loading="lazy" decoding="async">`;
+    return banner.target_url
+      ? `<a class="ad-banner" href="${escapeHtml(banner.target_url)}" target="_blank" rel="sponsored noopener noreferrer">${image}</a>`
+      : `<div class="ad-banner">${image}</div>`;
+  }).join("");
+  return `<aside class="ad-banners" aria-label="Реклама">${images}</aside>`;
+}
+
+function renderHome(rows, stars, stats, activeRuns = [], banners = []) {
+  const pinnedCount = rows.filter(row => row.pinned_at).length;
+  const completedRows = rows.map((r) => { const href = `/test/${escapeHtml(r.id)}`; const verified = Number(r.verified) === 1; const search = [r.id, r.country, r.city, r.cpu, r.server_vendor, r.cores, r.ram, r.ram_type, r.disk, r.disk_type, r.score].filter(Boolean).join(" ").toLowerCase(); return `<tr data-result-row data-verified="${verified ? "verified" : "unverified"}" data-search="${escapeHtml(search)}"><td><a class="result-link" href="${href}">#${escapeHtml(r.id)}${r.pinned_at ? `<span class="pin-mark" title="Закреплён" aria-label="Закреплён">${icon("pin")}</span>` : ""}</a></td><td><a class="result-link regular" href="${href}">${location(r.country, r.city)}${present(r.cpu) ? `<span class="cpu">${present(r.server_vendor) ? `${escapeHtml(r.server_vendor)} · ` : ""}${escapeHtml(r.cpu)}</span>` : ""}</a></td><td><a class="result-link regular" href="${href}">${present(r.cores) ? escapeHtml(r.cores) : "—"}</a></td><td><a class="result-link regular" href="${href}">${present(r.ram) ? escapeHtml(r.ram) : "—"}${present(r.ram_type) ? `<span class="cpu">${escapeHtml(r.ram_type)}</span>` : ""}</a></td><td><a class="result-link regular" href="${href}">${present(r.disk) ? escapeHtml(r.disk) : "—"}${present(r.disk_type) ? `<span class="cpu">${escapeHtml(r.disk_type)}</span>` : ""}</a></td><td><a class="result-link score-cell" href="${href}">${clamp(r.score)}</a></td><td><a class="result-link" href="${href}"><span class="verification ${verified ? "" : "off"}">${verified ? "ВЕРИФИЦИРОВАНО" : "НЕ ПРОВЕРЕНО"}</span></a></td><td><a class="result-link open-link" href="${href}" aria-label="Открыть тест ${escapeHtml(r.id)}">${icon("arrow")}</a></td></tr>`; });
   const activeRowsHtml = activeRuns.map((r) => { const id = String(r.id || ""); const displayId = id.split("-")[0].slice(-8); const search = `${id} проверяется выполняется`.toLowerCase(); return `<tr class="running-row" data-result-row data-verified="running" data-search="${escapeHtml(search)}"><td><span class="result-link">#${escapeHtml(displayId)}</span></td><td><span class="result-link regular"><span class="location">Запуск выполняется</span><span class="cpu">Начат ${escapeHtml(r.started_at || "недавно")}</span></span></td><td><span class="result-link regular">—</span></td><td><span class="result-link regular">—</span></td><td><span class="result-link regular">—</span></td><td><span class="result-link score-cell">—</span></td><td><span class="result-link"><span class="verification pending">ПРОВЕРЯЕТСЯ</span></span></td><td><span class="result-link"></span></td></tr>`; }).join("");
-  const rowsHtml = activeRowsHtml + completedRows || `<tr><td class="empty" colspan="8">Пока нет опубликованных или выполняющихся тестов.</td></tr>`;
+  const rowsHtml = completedRows.slice(0, pinnedCount).join("") + activeRowsHtml + completedRows.slice(pinnedCount).join("") || `<tr><td class="empty" colspan="8">Пока нет опубликованных или выполняющихся тестов.</td></tr>`;
   const command = "bash <(curl -fsSL https://raw.githubusercontent.com/kapybarovv/servergrade/main/servergrade.sh)";
-  return shell("Результаты тестов", `<main class="home-main"><section class="home-hero"><div class="hero-copy"><h1>Server<span>Grade</span></h1><p>Независимые технические замеры VPS. Баллы считаются на сервере, подтверждённые запуски привязаны к исходному IP.</p><div class="actions"><button class="button" type="button" data-copy="${escapeHtml(command)}">${icon("copy")}Запустить замер ${icon("arrow")}</button><a class="button secondary" href="https://github.com/kapybarovv/servergrade">${icon("github")}GitHub</a></div></div><div class="stats"><div class="stat"><strong>${Number(stats.total || 0).toLocaleString("ru-RU")}</strong><span>Всего замеров</span></div><div class="stat"><strong>${Number(stats.verified || 0).toLocaleString("ru-RU")}</strong><span>Верифицировано</span></div><div class="stat"><strong>${Number(stats.today || 0).toLocaleString("ru-RU")}</strong><span>Сегодня</span></div><div class="stat"><strong><i class="live-dot"></i>${Number(stats.active || 0).toLocaleString("ru-RU")}</strong><span>Проверяется сейчас</span></div></div></section><section id="benchmarks" class="results" data-results data-filter="all"><div class="results-toolbar"><div class="section-head"><span>Последние замеры</span></div><div class="table-tools"><label class="search-box">${icon("search")}<input data-result-search type="search" autocomplete="off" placeholder="Поиск по ID, стране, CPU, хостингу…" aria-label="Поиск по замерам"></label><div class="filter-pills" aria-label="Фильтр результатов"><button class="filter-pill active" type="button" data-filter="all">Все</button><button class="filter-pill" type="button" data-filter="verified">Верифицировано</button><button class="filter-pill" type="button" data-filter="unverified">Не проверено</button><button class="filter-pill" type="button" data-filter="running">Проверяются</button></div></div></div><div class="table-shell"><table><thead><tr><th>ID</th><th>ЛОКАЦИЯ / СЕРВЕР</th><th>ЯДРА</th><th>RAM</th><th>ДИСК</th><th>РЕЙТИНГ</th><th>ПРОВЕРКА</th><th></th></tr></thead><tbody>${rowsHtml}<tr data-filter-empty hidden><td class="filtered-empty" colspan="8">Ничего не найдено.</td></tr></tbody></table></div></section></main>${homeMotionScript()}`, stars);
+  return shell("Результаты тестов", `<main class="home-main"><section class="home-hero"><div class="hero-copy"><h1>Server<span>Grade</span></h1><p>Независимые технические замеры VPS. Баллы считаются на сервере, подтверждённые запуски привязаны к исходному IP.</p><div class="actions"><button class="button" type="button" data-copy="${escapeHtml(command)}">${icon("copy")}Запустить замер ${icon("arrow")}</button><a class="button secondary" href="https://github.com/kapybarovv/servergrade">${icon("github")}GitHub</a></div></div><div class="stats"><div class="stat"><strong>${Number(stats.total || 0).toLocaleString("ru-RU")}</strong><span>Всего замеров</span></div><div class="stat"><strong>${Number(stats.verified || 0).toLocaleString("ru-RU")}</strong><span>Верифицировано</span></div><div class="stat"><strong>${Number(stats.today || 0).toLocaleString("ru-RU")}</strong><span>Сегодня</span></div><div class="stat"><strong><i class="live-dot"></i>${Number(stats.active || 0).toLocaleString("ru-RU")}</strong><span>Проверяется сейчас</span></div></div></section>${renderBanners(banners)}<section id="benchmarks" class="results" data-results data-filter="all"><div class="results-toolbar"><div class="section-head"><span>Последние замеры</span></div><div class="table-tools"><label class="search-box">${icon("search")}<input data-result-search type="search" autocomplete="off" placeholder="Поиск по ID, стране, CPU, хостингу…" aria-label="Поиск по замерам"></label><div class="filter-pills" aria-label="Фильтр результатов"><button class="filter-pill active" type="button" data-filter="all">Все</button><button class="filter-pill" type="button" data-filter="verified">Верифицировано</button><button class="filter-pill" type="button" data-filter="unverified">Не проверено</button><button class="filter-pill" type="button" data-filter="running">Проверяются</button></div></div></div><div class="table-shell"><table><thead><tr><th>ID</th><th>ЛОКАЦИЯ / СЕРВЕР</th><th>ЯДРА</th><th>RAM</th><th>ДИСК</th><th>РЕЙТИНГ</th><th>ПРОВЕРКА</th><th></th></tr></thead><tbody>${rowsHtml}<tr data-filter-empty hidden><td class="filtered-empty" colspan="8">Ничего не найдено.</td></tr></tbody></table></div></section></main>${homeMotionScript()}`, stars);
 }
 
 async function githubStars() {
@@ -304,9 +410,9 @@ async function githubStars() {
   }
 }
 
-async function createChallenge(request, env) {
+async function createChallenge(request, env, client = { ip: clientIp(request), cf: request.cf || {} }) {
   const secret = await serverSecret(env);
-  const ipHash = await hmac(secret, clientIp(request));
+  const ipHash = await hmac(secret, client.ip);
   await env.DB.prepare("DELETE FROM result_challenges WHERE expires_at < datetime('now','-1 day')").run();
   const recent = await env.DB.prepare("SELECT COUNT(*) count FROM result_challenges WHERE source_ip_hash=? AND created_at > datetime('now','-1 hour')").bind(ipHash).first();
   if (Number(recent?.count || 0) >= 12) return Response.json({ error: "challenge_rate_limit" }, { status: 429 });
@@ -317,14 +423,14 @@ async function createChallenge(request, env) {
     if (!exists) break;
   }
   const nonce = randomHex(32);
-  const cf = request.cf || {};
+  const cf = client.cf;
   const edgeRtt = Number.isFinite(Number(cf.clientTcpRtt)) ? Math.round(Number(cf.clientTcpRtt)) : Number.isFinite(Number(cf.clientQuicRtt)) ? Math.round(Number(cf.clientQuicRtt)) : null;
   await env.DB.prepare("INSERT INTO result_challenges(id,nonce_hash,source_ip_hash,created_at,expires_at,edge_country,edge_asn,edge_org,edge_rtt_ms,edge_colo) VALUES(?,?,?,datetime('now'),datetime('now','+2 hours'),?,?,?,?,?)")
     .bind(id, await hmac(secret, nonce), ipHash, String(cf.country || "—"), cf.asn == null ? null : Number(cf.asn), String(cf.asOrganization || "—").slice(0, 160), edgeRtt, String(cf.colo || "—")).run();
   return Response.json({ test_id: id, nonce, expires_in: 7200 }, { status: 201, headers: { "cache-control": "no-store" } });
 }
 
-async function publish(request, env) {
+async function publish(request, env, client = { ip: clientIp(request), cf: request.cf || {} }) {
   const type = request.headers.get("content-type") || "";
   if (!type.includes("application/x-www-form-urlencoded")) return new Response("Expected form data", { status: 415 });
   const raw = await request.text();
@@ -336,7 +442,7 @@ async function publish(request, env) {
   const terminalReport = (form.get("terminal_report") || "").slice(0, 180000);
   const scores = calculateScores(statusBlob, metricsBlob, servicesBlob);
   const secret = await serverSecret(env);
-  const ipHash = await hmac(secret, clientIp(request));
+  const ipHash = await hmac(secret, client.ip);
   const challengeId = form.get("challenge_id") || "";
   const nonce = form.get("nonce") || "";
   let challenge = null;
@@ -366,7 +472,7 @@ async function publish(request, env) {
   const pagesExpected = Math.max(0, Math.min(8, Number.parseInt(form.get("pages_expected"), 10) || 0));
   const uploadToken = pagesExpected ? randomHex(24) : "";
   if (pagesExpected) await env.DB.prepare("INSERT INTO secure_upload_tokens(result_id,token_hash,expires_at,expected_count) VALUES(?,?,datetime('now','+10 minutes'),?)").bind(id, await hmac(secret, uploadToken), pagesExpected).run();
-  return Response.json({ id, url: `${new URL(request.url).origin}/test/${id}`, verified, score: scores, upload_token: uploadToken || undefined, upload_expires_in: pagesExpected ? 600 : undefined }, { status: 201, headers: { "cache-control": "no-store" } });
+  return Response.json({ id, url: `${publicOrigin(request, env)}/test/${id}`, verified, score: scores, upload_token: uploadToken || undefined, upload_expires_in: pagesExpected ? 600 : undefined }, { status: 201, headers: { "cache-control": "no-store" } });
 }
 
 async function uploadAsset(request, env, id) {
@@ -389,7 +495,7 @@ async function uploadAsset(request, env, id) {
   const uploaded = Number(access.uploaded_count || 0) + 1;
   if (uploaded >= Number(access.expected_count)) await env.DB.prepare("DELETE FROM secure_upload_tokens WHERE result_id=?").bind(id).run();
   else await env.DB.prepare("UPDATE secure_upload_tokens SET uploaded_count=? WHERE result_id=?").bind(uploaded, id).run();
-  return Response.json({ ok: true, complete: uploaded >= Number(access.expected_count), url: `${new URL(request.url).origin}/assets/${id}/${position}.svg` }, { status: 201 });
+  return Response.json({ ok: true, complete: uploaded >= Number(access.expected_count), url: `${publicOrigin(request, env)}/assets/${id}/${position}.svg` }, { status: 201 });
 }
 
 async function updateRun(request, env) {
@@ -411,14 +517,39 @@ async function updateRun(request, env) {
 
 export default {
   async fetch(request, env) {
-    await ensureRuntimeSchema(env);
     const url = new URL(request.url);
+    if ((request.method === "GET" || request.method === "HEAD") && env.PUBLIC_ORIGIN && url.origin !== publicOrigin(request, env)) {
+      return Response.redirect(`${publicOrigin(request, env)}${url.pathname}${url.search}`, 308);
+    }
+    await ensureRuntimeSchema(env);
+    await ensureAdminSchema(env);
+    const bannerResponse = await bannerImageResponse(request, env);
+    if (bannerResponse) return bannerResponse;
+    const adminResponse = await handleAdminRequest(request, env);
+    if (adminResponse) return adminResponse;
+    if (request.method === "GET" && url.pathname === "/admin") {
+      return new Response(renderAdminPage(await isAdmin(request, env)), {
+        headers: {
+          ...headers,
+          "content-security-policy": "default-src 'none'; img-src 'self' https: data: blob:; style-src 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; script-src 'unsafe-inline'; connect-src 'self'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'",
+          "cache-control": "no-store",
+          "x-robots-tag": "noindex, nofollow",
+        },
+      });
+    }
+    let client;
+    if (request.method === "POST" && (/^\/api\/(?:runs|challenges|results)$/.test(url.pathname) || /^\/api\/results\/\d{8}\/assets$/.test(url.pathname))) {
+      const forwarded = await legacyClientContext(request, env);
+      if (forwarded instanceof Response) return forwarded;
+      request = forwarded.request;
+      client = forwarded.context;
+    }
     if (request.method === "GET" && url.pathname === "/favicon.svg") {
       return new Response('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="16" fill="#78cf87"/><path d="M42 20H27a8 8 0 0 0 0 16h10a5 5 0 0 1 0 10H20" fill="none" stroke="#0d0f0e" stroke-width="7" stroke-linecap="round"/></svg>', { headers: { "content-type": "image/svg+xml", "cache-control": "public,max-age=86400" } });
     }
     if (request.method === "POST" && url.pathname === "/api/runs") return updateRun(request, env);
-    if (request.method === "POST" && url.pathname === "/api/challenges") return createChallenge(request, env);
-    if (request.method === "POST" && url.pathname === "/api/results") return publish(request, env);
+    if (request.method === "POST" && url.pathname === "/api/challenges") return createChallenge(request, env, client);
+    if (request.method === "POST" && url.pathname === "/api/results") return publish(request, env, client);
     const assetUpload = url.pathname.match(/^\/api\/results\/(\d{8})\/assets$/);
     if (request.method === "POST" && assetUpload) return uploadAsset(request, env, assetUpload[1]);
     const assetMatch = url.pathname.match(/^\/assets\/(\d{8})\/(\d+)\.svg$/);
@@ -436,13 +567,14 @@ export default {
     }
     if (request.method === "GET" && url.pathname === "/") {
       await env.DB.prepare("DELETE FROM active_runs WHERE updated_at < datetime('now','-45 minutes')").run();
-      const [query, activeQuery, stars, stats] = await Promise.all([
-        env.DB.prepare("SELECT r.id,r.created_at,r.score,r.grade,r.country,r.city,r.cpu,r.cores,r.ram,r.ram_type,r.disk,r.disk_type,r.server_vendor,COALESCE(s.verified,0) verified FROM results r LEFT JOIN result_security s ON s.result_id=r.id ORDER BY r.created_at DESC LIMIT 30").all(),
+      const [query, activeQuery, stars, stats, banners] = await Promise.all([
+        env.DB.prepare("SELECT r.id,r.created_at,r.score,r.grade,r.country,r.city,r.cpu,r.cores,r.ram,r.ram_type,r.disk,r.disk_type,r.server_vendor,COALESCE(s.verified,0) verified,p.pinned_at FROM results r LEFT JOIN result_security s ON s.result_id=r.id LEFT JOIN result_pins p ON p.result_id=r.id ORDER BY (p.pinned_at IS NOT NULL) DESC,p.pinned_at DESC,r.created_at DESC LIMIT 30").all(),
         env.DB.prepare("SELECT id,started_at,updated_at FROM active_runs ORDER BY updated_at DESC LIMIT 30").all(),
         githubStars(),
         env.DB.prepare("SELECT (SELECT COUNT(*) FROM results) total,(SELECT COUNT(*) FROM result_security WHERE verified=1) verified,(SELECT COUNT(*) FROM results WHERE date(created_at)=date('now')) today,(SELECT COUNT(*) FROM active_runs) active").first(),
+        env.DB.prepare("SELECT id,title,CASE WHEN image_data<>'' THEN '/banners/'||id ELSE image_url END image_url,target_url,image_mime FROM admin_banners WHERE enabled=1 ORDER BY sort_order,id").all(),
       ]);
-      return new Response(renderHome(query.results || [], stars, stats || {}, activeQuery.results || []), { headers });
+      return new Response(renderHome(query.results || [], stars, stats || {}, activeQuery.results || [], banners.results || []), { headers });
     }
     return new Response("Not found", { status: 404 });
   }

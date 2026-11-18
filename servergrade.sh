@@ -32,7 +32,7 @@ ensure_utf8_locale
 #  ServerGrade — интерактивная диагностика сервера
 # ============================================================
 
-SCRIPT_VERSION="1.5.2"
+SCRIPT_VERSION="1.5.3"
 REPO_URL="https://raw.githubusercontent.com/kapybarovv/servergrade/main/servergrade.sh"
 
 # Цвета
@@ -50,7 +50,7 @@ MT_UA="Mozilla/5.0 (X11; Linux x86_64) servergrade/${SCRIPT_VERSION}"
 # Официальный SaaS принимает пользовательские замеры автоматически. Отключить
 # публикацию можно явно: SERVERGRADE_PUBLISH=0 servergrade
 SERVERGRADE_PUBLISH="${SERVERGRADE_PUBLISH:-1}"
-SERVERGRADE_PUBLISH_URL="${SERVERGRADE_PUBLISH_URL:-https://servergrade-results.kapybarovv.workers.dev/api/results}"
+SERVERGRADE_PUBLISH_URL="${SERVERGRADE_PUBLISH_URL:-https://servergrade.cc/api/results}"
 MT_RUN_ID=""
 
 # Спонсор: подпись в подвале сводки (см. sv_sponsor) и блок в главном меню

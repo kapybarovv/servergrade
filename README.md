@@ -8,7 +8,7 @@
 качество IP и доступность сервисов — в терминале, на изображениях и на одной
 публичной странице.
 
-[![Открыть ServerGrade](https://img.shields.io/badge/ОТКРЫТЬ_SERVERGRADE-10A37F?style=for-the-badge&logo=cloudflare&logoColor=white)](https://servergrade-results.kapybarovv.workers.dev/)
+[![Открыть ServerGrade](https://img.shields.io/badge/ОТКРЫТЬ_SERVERGRADE-10A37F?style=for-the-badge&logo=cloudflare&logoColor=white)](https://servergrade.cc/)
 [![GitHub stars](https://img.shields.io/github/stars/kapybarovv/servergrade?style=for-the-badge&logo=github&label=STAR)](https://github.com/kapybarovv/servergrade)
 
 ```bash
@@ -17,8 +17,8 @@ bash <(curl -fsSL https://raw.githubusercontent.com/kapybarovv/servergrade/main/
 
 **Скопируйте команду → вставьте в терминал сервера → получите ссылку на отчёт.**
 
-[Сайт](https://servergrade-results.kapybarovv.workers.dev/) ·
-[Пример отчёта](https://servergrade-results.kapybarovv.workers.dev/test/83426476) ·
+[Сайт](https://servergrade.cc/) ·
+[Пример отчёта](https://servergrade.cc/test/83426476) ·
 [Архитектура платформы](docs/platform-architecture.md) ·
 [Исходный проект](https://github.com/saveksme/multitest)
 
@@ -229,7 +229,7 @@ ServerGrade запускает и агрегирует несколько нез
 
 **Проверить сервер — одна команда.**
 
-[Запустить тест](https://servergrade-results.kapybarovv.workers.dev/) ·
+[Запустить тест](https://servergrade.cc/) ·
 [Поставить звезду](https://github.com/kapybarovv/servergrade) ·
 [Открыть multitest](https://github.com/saveksme/multitest)
 

@@ -1,0 +1,15 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "servergrade-results",
+  "account_id": "b9ccb412bd3e7ae85bb2b254168496a1",
+  "main": "index.js",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": true,
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "servergrade",
+      "database_id": "87866ab1-ac98-4c06-a2ca-3adb66029e46"
+    }
+  ]
+}

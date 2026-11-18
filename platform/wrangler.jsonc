@@ -1,8 +1,17 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "servergrade-results",
+  "account_id": "b8f368a34f2fa26f8acfb588ec33264b",
   "main": "src/index.js",
   "compatibility_date": "2026-10-01",
+  "workers_dev": false,
+  "routes": [
+    { "pattern": "servergrade.cc", "custom_domain": true },
+    { "pattern": "www.servergrade.cc", "custom_domain": true }
+  ],
+  "vars": {
+    "PUBLIC_ORIGIN": "https://servergrade.cc"
+  },
   "rules": [
     {
       "type": "Text",
@@ -14,7 +23,7 @@
     {
       "binding": "DB",
       "database_name": "servergrade",
-      "database_id": "87866ab1-ac98-4c06-a2ca-3adb66029e46"
+      "database_id": "4ca3c307-cb46-4cc5-8a0c-9d293e5886e9"
     }
   ]
 }
