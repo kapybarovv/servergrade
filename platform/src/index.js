@@ -236,7 +236,7 @@ function adminEntryScript() {
     .ad-banners{display:grid;gap:12px;margin:0 0 28px;width:100%;min-width:0}
     .ad-banner{display:block;overflow:hidden;border:1px solid var(--line);border-radius:18px;background:var(--surface);transition:opacity .18s ease}
     .ad-banner:hover{opacity:.88}
-    .ad-banner img{display:block;width:100%;height:auto;max-width:100%;aspect-ratio:auto 1348 / 285}
+    .ad-banner img{display:block;width:100%;height:auto;max-width:100%;aspect-ratio:auto 1348 / 150}
     @media(max-width:560px){.nav:has(.admin-entry) .github-stars:not(.admin-entry){display:none!important}}
   </style><script>
     (() => {
@@ -352,7 +352,7 @@ function enhancedLightboxCoreScript() {
   return `<script>addEventListener('DOMContentLoaded',()=>{const box=document.querySelector('[data-lightbox]'),stage=box?.querySelector('.lightbox-stage'),img=box?.querySelector('[data-lightbox-image]');if(!box||!stage||!img)return;const tools=document.createElement('div');tools.className='lightbox-tools';tools.innerHTML='<button class="lightbox-tool" type="button" data-zoom-out aria-label="Уменьшить">−</button><button class="lightbox-tool lightbox-zoom" type="button" data-zoom-reset aria-label="Сбросить масштаб">100%</button><button class="lightbox-tool" type="button" data-zoom-in aria-label="Увеличить">+</button>';stage.append(tools);let scale=1,x=0,y=0,startX=0,startY=0,baseX=0,baseY=0,dragging=false,moved=false;const zoomLabel=tools.querySelector('.lightbox-zoom');const clamp=(n,a,b)=>Math.max(a,Math.min(b,n));function draw(animate=true){img.classList.toggle('is-dragging',!animate);img.style.transform='translate3d('+x+'px,'+y+'px,0) scale('+scale+')';zoomLabel.textContent=Math.round(scale*100)+'%'}function reset(){scale=1;x=0;y=0;draw()}function zoom(delta){scale=clamp(scale+delta,1,4);if(scale===1){x=0;y=0}draw()}tools.addEventListener('click',e=>{if(e.target.closest('[data-zoom-in]'))zoom(.25);if(e.target.closest('[data-zoom-out]'))zoom(-.25);if(e.target.closest('[data-zoom-reset]'))reset()});img.addEventListener('dragstart',e=>e.preventDefault());img.addEventListener('dblclick',()=>scale>1?reset():zoom(1));img.addEventListener('wheel',e=>{e.preventDefault();zoom(e.deltaY<0?.25:-.25)},{passive:false});img.addEventListener('pointerdown',e=>{dragging=true;moved=false;startX=e.clientX;startY=e.clientY;baseX=x;baseY=y;img.setPointerCapture(e.pointerId);draw(false)});img.addEventListener('pointermove',e=>{if(!dragging)return;const dx=e.clientX-startX,dy=e.clientY-startY;moved=moved||Math.abs(dx)>4||Math.abs(dy)>4;if(scale>1){x=baseX+dx;y=baseY+dy;draw(false)}});img.addEventListener('pointerup',e=>{if(!dragging)return;const dx=e.clientX-startX;dragging=false;img.classList.remove('is-dragging');if(scale===1&&Math.abs(dx)>64)showLightbox(lightboxIndex+(dx<0?1:-1));else draw();});img.addEventListener('pointercancel',()=>{dragging=false;draw()});new MutationObserver(()=>{if(!box.hidden)reset()}).observe(box,{attributes:true,attributeFilter:['hidden']});document.addEventListener('keydown',e=>{if(box.hidden)return;if(e.key==='+'||e.key==='=')zoom(.25);if(e.key==='-')zoom(-.25);if(e.key==='0')reset()})});</script>`;
 }
 
-function renderResult(r, assets = []) {
+function renderResult(r, assets = [], banners = []) {
   r.grade = russianGrade(r.score);
   const ram = [r.ram, r.ram_type].filter(present).join(" · ");
   const disk = [r.disk, r.disk_type].filter(present).join(" · ");
@@ -365,12 +365,12 @@ function renderResult(r, assets = []) {
   const verified = Number(r.verified) === 1;
   const statusLabel = verified ? "Source-bound · Worker score" : "Не подтверждено";
   const security = `<section class="attestation">${item("СТАТУС", statusLabel, "system-item")}${item("EDGE", [r.edge_colo, r.edge_country].filter(present).join(" · "), "system-item")}${item("ASN EDGE", r.edge_asn ? `AS${r.edge_asn} ${r.edge_org || ""}` : "—", "system-item")}${item("RTT ДО CLOUDFLARE", r.edge_rtt_ms != null ? `${r.edge_rtt_ms} ms` : "—", "system-item")}${item("ВНЕШНИЕ PROBES", r.external_probe_status === "edge-only" ? "Только edge attestation" : r.external_probe_status, "system-item")}${item("ПОДПИСЬ", r.signature ? r.signature.slice(0, 20) + "…" : "—", "system-item signature")}</section>`;
-  return shell(`Тест ${r.id}`, `<main><a class="back" href="/">← Все тесты</a><div class="result-heading"><div><div class="eyebrow">ТЕСТ ${escapeHtml(r.id)} · ${escapeHtml(r.created_at)} · <span class="verification ${verified ? "" : "off"}">${verified ? "ВЕРИФИЦИРОВАНО" : "НЕ ПРОВЕРЕНО"}</span></div><h1 class="result-location">${appleFlag(r.country)}<span>${escapeHtml(countryLabel(r.country))} · ${escapeHtml(r.city)}</span></h1><p class="muted">${present(r.server_vendor) ? `${escapeHtml(r.server_vendor)} · ` : ""}${present(r.cpu) ? escapeHtml(r.cpu) : "Результат диагностики сервера"}</p></div><div class="score-badge"><strong>${clamp(r.score)}</strong><span>/ 100 · ${escapeHtml(r.grade)}</span></div></div>
+  return shell(`Тест ${r.id}`, `<main>${renderBanners(banners)}<a class="back" href="/">← Все тесты</a><div class="result-heading"><div><div class="eyebrow">ТЕСТ ${escapeHtml(r.id)} · ${escapeHtml(r.created_at)} · <span class="verification ${verified ? "" : "off"}">${verified ? "ВЕРИФИЦИРОВАНО" : "НЕ ПРОВЕРЕНО"}</span></div><h1 class="result-location">${appleFlag(r.country)}<span>${escapeHtml(countryLabel(r.country))} · ${escapeHtml(r.city)}</span></h1><p class="muted">${present(r.server_vendor) ? `${escapeHtml(r.server_vendor)} · ` : ""}${present(r.cpu) ? escapeHtml(r.cpu) : "Результат диагностики сервера"}</p></div><div class="score-badge"><strong>${clamp(r.score)}</strong><span>/ 100 · ${escapeHtml(r.grade)}</span></div></div>
   <section class="score compact-score"><div class="panel metrics"><div class="metric"><span>СЕТЬ</span><b>${clamp(r.network_score)}</b></div><div class="metric"><span>ПРОИЗВОДИТЕЛЬНОСТЬ</span><b>${clamp(r.performance_score)}</b></div><div class="metric"><span>КАЧЕСТВО IP</span><b>${clamp(r.quality_score)}</b></div><div class="metric"><span>ПОКРЫТИЕ</span><b>${clamp(r.coverage)}%</b></div></div></section>
   ${facts ? `<section class="facts">${facts}</section>` : ""}${system ? `<section class="system-grid">${system}</section>` : ""}${security}
   <div class="view-switcher" role="tablist" aria-label="Формат отчёта"><button class="view-tab active" type="button" data-view-tab="images">Изображения</button><button class="view-tab" type="button" data-view-tab="full">Полные результаты</button><button class="view-tab" type="button" data-view-tab="terminal">Терминал</button></div>
   <div class="result-view" data-result-view="images">${gallery}</div><div class="result-view" data-result-view="full" hidden>${renderDetailedResults(r)}</div><div class="result-view" data-result-view="terminal" hidden>${terminal}</div>
-  <div class="actions"><a class="button secondary" href="https://github.com/kapybarovv/servergrade">${icon("github")}Методика на GitHub</a></div>${enhancedLightboxScript()}</main>`);
+  <div class="actions"><a class="button secondary" href="https://github.com/kapybarovv/servergrade">${icon("github")}Методика на GitHub</a></div>${enhancedLightboxScript()}</main>`, null, banners[0]?.image_url || "");
 }
 
 function homeMotionScript() {
@@ -562,11 +562,12 @@ export default {
     }
     const match = url.pathname.match(/^\/test\/(\d{8})$/);
     if (request.method === "GET" && match) {
-      const [row, assets] = await Promise.all([
+      const [row, assets, banners] = await Promise.all([
         env.DB.prepare("SELECT r.*,d.*,t.content terminal_report,s.verified,s.verification_level,s.signature,s.edge_country,s.edge_asn,s.edge_org,s.edge_rtt_ms,s.edge_colo,s.external_probe_status,s.immutable_at FROM results r LEFT JOIN result_details d ON d.result_id=r.id LEFT JOIN result_terminal_reports t ON t.result_id=r.id LEFT JOIN result_security s ON s.result_id=r.id WHERE r.id=?").bind(match[1]).first(),
         env.DB.prepare("SELECT position,name FROM result_assets WHERE result_id=? ORDER BY position").bind(match[1]).all(),
+        publicBanners(env),
       ]);
-      return row ? new Response(renderResult(row, assets.results || []), { headers }) : new Response("Result not found", { status: 404 });
+      return row ? new Response(renderResult(row, assets.results || [], banners), { headers }) : new Response("Result not found", { status: 404 });
     }
     if (request.method === "GET" && url.pathname === "/") {
       await env.DB.prepare("DELETE FROM active_runs WHERE updated_at < datetime('now','-45 minutes')").run();

@@ -240,4 +240,55 @@ test("Wrangler-bundled admin pages register working browser handlers", async (su
     }
   });
 
+  await suite.test("test reports place current banners above results and preload the first image", async () => {
+    const banners = [1, 2].map((id) => ({
+      id, title: "Synthetic banner " + id, image_url: "", image_mime: "image/webp",
+      target_url: "https://example.test/", enabled: 1, sort_order: id,
+      has_image: 1, version: String(id).repeat(64),
+    }));
+    const row = {
+      id: "12345678", created_at: "2026-11-21T12:00:00Z", country: "NL", city: "Amsterdam",
+      cpu: "Synthetic test CPU", score: 82, network_score: 80, performance_score: 82,
+      quality_score: 84, coverage: 100,
+    };
+    const reportEnv = environment();
+    reportEnv.DB.prepare = (sql) => ({
+      bind() { return this; },
+      async run() { return { meta: { changes: 0 } }; },
+      async first() { return sql.includes("FROM results r") ? { ...row } : {}; },
+      async all() {
+        if (sql.includes("FROM admin_banners b")) {
+          return { results: banners.filter((banner) => banner.enabled).sort((a, b) => a.sort_order - b.sort_order) };
+        }
+        return { results: [] };
+      },
+    });
+    const response = await worker.fetch(new Request(origin + "/test/" + row.id), reportEnv);
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get("cache-control"), /no-cache/);
+    const html = await response.text();
+    const firstUrl = "/banners/1?v=" + "1".repeat(64);
+    const secondUrl = "/banners/2?v=" + "2".repeat(64);
+    assert.match(html, /<main><aside class="ad-banners"/);
+    assert.ok(html.indexOf(firstUrl, html.indexOf("<main>")) < html.indexOf('<a class="back"'));
+    assert.ok(html.includes('<link rel="preload" as="image" href="' + firstUrl + '" fetchpriority="high">'));
+    const images = [...html.matchAll(/<img src="([^"]+)"[^>]*>/g)].map((match) => match[0]);
+    assert.match(images.find((tag) => tag.includes(firstUrl)), /loading="eager"[^>]*fetchpriority="high"/);
+    assert.match(images.find((tag) => tag.includes(secondUrl)), /loading="lazy"/);
+    assert.match(html, /aspect-ratio:auto 1348 \/ 150/);
+
+    banners[0].version = "a".repeat(64);
+    const updated = await worker.fetch(new Request(origin + "/test/" + row.id), reportEnv);
+    const updatedHtml = await updated.text();
+    assert.ok(updatedHtml.includes("/banners/1?v=" + banners[0].version));
+    assert.ok(!updatedHtml.includes(firstUrl), "Refreshing the report must use the latest banner revision");
+
+    banners.forEach((banner) => { banner.enabled = 0; });
+    const hidden = await worker.fetch(new Request(origin + "/test/" + row.id), reportEnv);
+    const hiddenHtml = await hidden.text();
+    assert.doesNotMatch(hiddenHtml, /<aside class="ad-banners"/);
+    assert.doesNotMatch(hiddenHtml, /<link rel="preload" as="image"/);
+    assert.match(hiddenHtml, /class="result-heading"/);
+  });
+
 });
