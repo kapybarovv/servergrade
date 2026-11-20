@@ -32,7 +32,7 @@ ensure_utf8_locale
 #  ServerGrade — интерактивная диагностика сервера
 # ============================================================
 
-SCRIPT_VERSION="1.5.3"
+SCRIPT_VERSION="1.6.0"
 REPO_URL="https://raw.githubusercontent.com/kapybarovv/servergrade/main/servergrade.sh"
 
 # Цвета
@@ -52,6 +52,9 @@ MT_UA="Mozilla/5.0 (X11; Linux x86_64) servergrade/${SCRIPT_VERSION}"
 SERVERGRADE_PUBLISH="${SERVERGRADE_PUBLISH:-1}"
 SERVERGRADE_PUBLISH_URL="${SERVERGRADE_PUBLISH_URL:-https://servergrade.cc/api/results}"
 MT_RUN_ID=""
+# Независимые IP-проверки выполняются пулом; нагрузочные замеры — отдельно.
+SERVERGRADE_JOBS="${SERVERGRADE_JOBS:-2}"
+case "$SERVERGRADE_JOBS" in 1|2|3|4) ;; *) SERVERGRADE_JOBS=2 ;; esac
 
 # Спонсор: подпись в подвале сводки (см. sv_sponsor) и блок в главном меню
 # (см. print_stencloud_promo).
@@ -320,12 +323,20 @@ check_and_install() {
 # Что нужно конкретному тесту. Пустая строка — тест ничего сверх базы не требует.
 test_deps() {
     case "$1" in
-        run_ip_region|run_censorcheck_geoblock|run_censorcheck_dpi|run_censorcheck_tlab|run_bench_sh)
-            echo "wget" ;;
+        run_ip_region)
+            echo "wget curl jq column" ;;
+        run_censorcheck_geoblock|run_censorcheck_dpi)
+            echo "wget curl dig jq column openssl" ;;
+        run_censorcheck_tlab)
+            echo "wget curl nslookup nc openssl python3" ;;
+        run_bench_sh)
+            echo "wget curl tar gzip timeout" ;;
         run_iperf3_ru|run_iperf3_tlab)
-            echo "wget iperf3 jq" ;;
-        run_yabs|run_ip_check_place|run_ip_quality)
-            echo "curl" ;;
+            echo "wget iperf3 jq ping timeout" ;;
+        run_yabs)
+            echo "curl tar gzip timeout" ;;
+        run_ip_check_place|run_ip_quality)
+            echo "curl jq bc nc dig ip" ;;
         run_sysbench_cpu)
             echo "sysbench" ;;
     esac
@@ -335,6 +346,7 @@ test_deps() {
 # curl в базе всегда: на нём держится сама сводка — гео, аплоад картинки, шрифты.
 missing_deps_for() {
     local fn d; local -a want=( curl script ) out=()
+    [[ "${SERVERGRADE_JOBS:-1}" =~ ^[2-4]$ ]] && want+=( setsid )
     for fn in "$@"; do
         for d in $(test_deps "$fn"); do
             [[ " ${want[*]} " == *" $d "* ]] || want+=( "$d" )
@@ -346,23 +358,55 @@ missing_deps_for() {
     printf '%s' "${out[*]}"
 }
 
-# Ставит только то, что нужно выбранным тестам. Раньше здесь безусловно тянулись
-# curl+wget+iperf3+sysbench — то есть sysbench приезжал на сервер, даже если из
-# всего мультитеста выбрали одну проверку блокировок.
+# Команды и имена пакетов различаются между дистрибутивами. Для старых Debian
+# у column оставляем bsdmainutils запасным вариантом после bsdextrautils.
+dependency_packages() {
+    local cmd="$1" pm="$2"
+    case "$pm:$cmd" in
+        apt:column)                 echo "bsdextrautils bsdmainutils" ;;
+        apt:dig|apt:nslookup)        echo "dnsutils" ;;
+        apt:nc)                     echo "netcat-openbsd" ;;
+        apt:ip)                     echo "iproute2" ;;
+        apt:ping)                   echo "iputils-ping" ;;
+        apk:script|apk:setsid|apk:column)
+                                    echo "util-linux-misc" ;;
+        apk:dig|apk:nslookup)        echo "bind-tools" ;;
+        apk:nc)                     echo "netcat-openbsd" ;;
+        apk:ip)                     echo "iproute2" ;;
+        apk:ping)                   echo "iputils" ;;
+        pacman:dig|pacman:nslookup)  echo "bind" ;;
+        pacman:nc)                  echo "openbsd-netcat" ;;
+        pacman:ip)                  echo "iproute2" ;;
+        pacman:ping)                echo "iputils" ;;
+        dnf:dig|dnf:nslookup|yum:dig|yum:nslookup)
+                                    echo "bind-utils" ;;
+        dnf:nc|yum:nc)              echo "nmap-ncat" ;;
+        dnf:ip|yum:ip)              echo "iproute" ;;
+        dnf:ping|yum:ping)          echo "iputils" ;;
+        *:script|*:setsid|*:column)  echo "util-linux" ;;
+        *:timeout)                  echo "coreutils" ;;
+        *)                          echo "$cmd" ;;
+    esac
+}
+
+# Завершаем установку до запуска дочерних тестов. Иначе их собственные
+# установщики могут одновременно захватить блокировку пакетного менеджера
+# или запросить подтверждение из /dev/tty во время параллельного прогона.
 install_deps_for() {
-    local miss d failed=0
+    local miss d pkg pm failed=0
     miss=$(missing_deps_for "$@")
     if [[ -z "$miss" ]]; then
         echo -e "${GREEN}Зависимости на месте — ставить нечего.${NC}"
         echo ""
         return 0
     fi
+    pm=$(detect_pkg_manager)
     echo -e "${CYAN}Ставлю недостающее для выбранных тестов: ${BOLD}${miss}${NC}"
     for d in $miss; do
-        case "$d" in
-            script) check_and_install script util-linux || failed=1 ;;
-            *)      check_and_install "$d" || failed=1 ;;
-        esac
+        for pkg in $(dependency_packages "$d" "$pm"); do
+            check_and_install "$d" "$pkg" && break
+        done
+        command -v "$d" &>/dev/null || failed=1
     done
     echo ""
     (( failed == 0 )) || { echo -e "${RED}Не все зависимости удалось установить.${NC}"; return 1; }
@@ -552,6 +596,215 @@ run_test_with_progress() {
     return $rc
 }
 
+# Сетевые запросы к API и проверки доступности можно объединять в пул.
+# Неизвестный тест всегда эксклюзивен: замеры CPU/диска/полосы не конкурируют.
+mt_test_is_probe() {
+    case "$1" in
+        run_ip_region|run_censorcheck_geoblock|run_censorcheck_dpi|run_censorcheck_tlab|run_ip_check_place|run_ip_quality) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+mt_export_test_functions() {
+    export RED GREEN YELLOW CYAN BOLD NC SCRIPT_VERSION APT_INDEX_READY SCRIPT_CAPTURE
+    export -f capture_test print_separator check_and_install install_package apt_install_package detect_pkg_manager
+    export -f run_ip_region run_censorcheck_geoblock run_censorcheck_dpi run_censorcheck_tlab
+    export -f run_iperf3_ru run_iperf3_tlab run_yabs run_ip_check_place run_bench_sh run_ip_quality run_sysbench_cpu
+}
+
+# Массивы job_* принадлежат mt_run_parallel_tests; только родитель выводит
+# строки и обновляет статусы. Временные файлы каждого upstream изолированы.
+mt_parallel_output() {
+    local i="$1" final="${2:-0}" live="${test_log[$1]}.runner" lines end line
+    [[ -f "$live" ]] || return 0
+    lines=$(wc -l < "$live")
+    (( lines < job_line[i] && ! final )) && return 0
+    end=$lines; (( final )) && end='$'
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        printf '  [%s] %s\n' "$((i+1))" "$line"
+    done < <(sed -n "${job_line[$i]},${end}p" "$live" | strip_ansi | tr -d '\000-\010\013\014\016-\037\177')
+    job_line[$i]=$((lines+1))
+}
+
+mt_parallel_stop_jobs() {
+    local i pgid
+    for i in "${!test_funcs[@]}"; do
+        [[ "${job_state[$i]}" == running ]] || continue
+        pgid=""; [[ -s "${job_group[$i]}" ]] && read -r pgid < "${job_group[$i]}"
+        if [[ "$pgid" =~ ^[1-9][0-9]*$ ]]; then kill -TERM -- "-$pgid" 2>/dev/null || true
+        else kill -TERM "${job_pid[$i]}" 2>/dev/null || true; fi
+    done
+    sleep .2
+    for i in "${!test_funcs[@]}"; do
+        [[ "${job_state[$i]}" == running ]] || continue
+        pgid=""; [[ -s "${job_group[$i]}" ]] && read -r pgid < "${job_group[$i]}"
+        [[ "$pgid" =~ ^[1-9][0-9]*$ ]] && kill -KILL -- "-$pgid" 2>/dev/null || true
+        wait "${job_pid[$i]}" 2>/dev/null || true
+        mt_parallel_output "$i" 1
+        job_state[$i]=done
+        test_status[$i]="пропущен"
+        MT_STATUS["${test_funcs[$i]}"]="пропущен"
+        printf '  [%s] Пропущен: %s\n' "$((i+1))" "${test_names[$i]}"
+    done
+}
+
+# Приближённое оставшееся время: критический путь пула + сумма оставшихся
+# эксклюзивных тестов. Процент учитывает все активные задачи, а не одну.
+mt_parallel_progress() {
+    local i j best=-1 longest load min_slot elapsed remaining exclusive=0 work=0 total=0
+    local completed=0 active=0 title="" pool=0 ipcheck=0
+    local -a slots=() queued=() used=()
+    for ((j=0;j<jobs;j++)); do slots[$j]=0; done
+    for i in "${!test_funcs[@]}"; do
+        total=$((total+test_secs[i]))
+        case "${job_state[$i]}" in
+            done) completed=$((completed+1)); work=$((work+test_secs[i])); continue ;;
+            running)
+                elapsed=$((SECONDS-job_started[i])); remaining=$((test_secs[i]-elapsed))
+                (( remaining < 15 )) && remaining=15
+                (( elapsed > test_secs[i]*95/100 )) && elapsed=$((test_secs[i]*95/100))
+                work=$((work+elapsed)); active=$((active+1))
+                title+="${title:+ · }${test_names[$i]}"
+                ;;
+            *) remaining=${test_secs[$i]} ;;
+        esac
+        if mt_test_is_probe "${test_funcs[$i]}"; then
+            case "${test_funcs[$i]}" in run_ip_check_place|run_ip_quality) ipcheck=$((ipcheck+remaining)) ;; esac
+            if [[ "${job_state[$i]}" == running ]]; then slots[$((active-1))]=$remaining
+            else queued+=( "$i" ); fi
+        else exclusive=$((exclusive+remaining)); fi
+    done
+    # Те же LPT-очередь и лимит, что используются при старте задач.
+    for ((j=0;j<${#queued[@]};j++)); do
+        best=-1; longest=-1
+        for i in "${queued[@]}"; do
+            [[ "${used[$i]:-0}" == 1 ]] && continue
+            if (( test_secs[i] > longest )); then best=$i; longest=${test_secs[$i]}; fi
+        done
+        (( best < 0 )) && break
+        used[$best]=1; min_slot=0
+        for ((i=1;i<jobs;i++)); do (( slots[i] < slots[min_slot] )) && min_slot=$i; done
+        slots[$min_slot]=$((slots[min_slot]+longest))
+    done
+    for load in "${slots[@]}"; do (( load > pool )) && pool=$load; done
+    (( ipcheck > pool )) && pool=$ipcheck
+    local eta=$((pool+exclusive)) pct=$((work*100/(total>0?total:1))) width=$((cols-48)) fill bar rest
+    (( completed == ${#test_funcs[@]} )) && pct=100
+    (( pct > 99 && completed < ${#test_funcs[@]} )) && pct=99
+    (( width < 8 )) && width=8; (( width > 32 )) && width=32
+    fill=$((pct*width/100)); printf -v bar '%*s' "$fill" ''; bar=${bar// /━}
+    printf -v rest '%*s' "$((width-fill))" ''; rest=${rest// /─}
+    [[ -n "$title" ]] || title="Подготовка следующего теста"
+    printf '\0337\033[%d;1H\033[48;5;236m\033[38;5;252m\033[K  ГОТОВО %s/%s · АКТИВНО %s/%s · %s' "$panel_top" "$completed" "${#test_funcs[@]}" "$active" "$jobs" "$(vcut "$title" "$((cols-42))")"
+    printf '\033[%d;1H\033[K  %b%s%b%s  %3d%% · прошло %s · ETA %s' "$((panel_top+1))" "$GREEN" "$bar" "$NC\033[48;5;236m\033[38;5;252m" "$rest" "$pct" "$(fmt_eta "$((SECONDS-started))")" "$(fmt_eta "$eta")"
+    printf '\033[%d;1H\033[K  Ctrl+C — пропустить активные тесты\033[0m\0338' "$((panel_top+2))"
+}
+
+mt_run_parallel_tests() {
+    local jobs="$1" i j next longest active pending_probes busy_ipcheck rc completed=0 started=$SECONDS
+    local rows=24 cols=80 panel_top=22 tty=0 stop=0 skip=0 last_ping=$SECONDS monitor=0
+    local old_int old_term old_hup old_exit
+    local -a job_state=() job_pid=() job_group=() job_started=() job_line=()
+    case "$jobs" in 2|3|4) ;; *) return 2 ;; esac
+    command -v setsid >/dev/null 2>&1 || { printf 'Для параллельного запуска нужен setsid (util-linux).\n'; return 1; }
+    # Без job control фоновый процесс не становится лидером группы до setsid.
+    # Поэтому и util-linux, и BusyBox делают exec без промежуточного fork,
+    # а $! остаётся PID процесса, за завершением которого следит планировщик.
+    [[ $- == *m* ]] && monitor=1
+    set +m
+    mt_export_test_functions
+    for i in "${!test_funcs[@]}"; do job_state[$i]=queued; job_line[$i]=1; done
+    old_int=$(trap -p INT); old_term=$(trap -p TERM); old_hup=$(trap -p HUP); old_exit=$(trap -p EXIT)
+    trap 'skip=1' INT
+    trap 'stop=143' TERM
+    trap 'stop=129' HUP
+    trap 'mt_parallel_stop_jobs' EXIT
+    if [[ -t 1 && "${TERM:-}" != dumb ]]; then
+        tty=1; rows=$(tput lines 2>/dev/null || echo 24); cols=$(tput cols 2>/dev/null || echo 80)
+        (( rows < 10 )) && rows=24; (( cols < 48 )) && cols=48
+        panel_top=$((rows-2))
+        printf '\033[?25l\033[1;%dr\033[%d;1H' "$((rows-3))" "$((rows-3))"
+    fi
+    while (( completed < ${#test_funcs[@]} )); do
+        if (( skip || stop )); then
+            mt_parallel_stop_jobs
+            skip=0
+            (( stop )) && break
+        fi
+        active=0; completed=0; pending_probes=0; busy_ipcheck=0
+        for i in "${!test_funcs[@]}"; do
+            if [[ "${job_state[$i]}" == running ]]; then
+                mt_parallel_output "$i"
+                if ! kill -0 "${job_pid[$i]}" 2>/dev/null; then
+                    if wait "${job_pid[$i]}"; then rc=0; else rc=$?; fi
+                    mt_parallel_output "$i" 1
+                    job_state[$i]=done
+                    test_status[$i]="ошибка"
+                    (( rc == 0 )) && [[ -s "${test_log[$i]}" ]] && test_status[$i]="выполнен"
+                    MT_STATUS["${test_funcs[$i]}"]="${test_status[$i]}"
+                    parse_test_output "${test_funcs[$i]}" "${test_log[$i]}" "$SUMMARY_DIR/${test_funcs[$i]}.metrics" "$SUMMARY_DIR/${test_funcs[$i]}.services"
+                    printf '  [%s] %s: %s\n' "$((i+1))" "${test_status[$i]}" "${test_names[$i]}"
+                fi
+            fi
+            case "${job_state[$i]}" in
+                done) completed=$((completed+1)) ;;
+                running)
+                    active=$((active+1))
+                    case "${test_funcs[$i]}" in run_ip_check_place|run_ip_quality) busy_ipcheck=1 ;; esac
+                    ;;
+                queued) mt_test_is_probe "${test_funcs[$i]}" && pending_probes=$((pending_probes+1)) ;;
+            esac
+        done
+        # Сначала длинные probes: это уменьшает хвост очереди. IP Check Place
+        # и IPQuality используют один upstream, поэтому не работают одновременно.
+        while (( active < jobs )); do
+            next=-1; longest=-1
+            if (( pending_probes > 0 )); then
+                for i in "${!test_funcs[@]}"; do
+                    [[ "${job_state[$i]}" == queued ]] && mt_test_is_probe "${test_funcs[$i]}" || continue
+                    case "${test_funcs[$i]}" in run_ip_check_place|run_ip_quality) (( busy_ipcheck )) && continue ;; esac
+                    if (( test_secs[i] > longest )); then next=$i; longest=${test_secs[$i]}; fi
+                done
+            elif (( active == 0 )); then
+                for i in "${!test_funcs[@]}"; do [[ "${job_state[$i]}" == queued ]] && { next=$i; break; }; done
+            fi
+            (( next < 0 )) && break
+            i=$next
+            job_group[$i]="$SUMMARY_DIR/job-$i.pgid"
+            if ! mkdir -p "$SUMMARY_DIR/work-$i/tmp" || ! : > "${test_log[$i]}" || ! : > "${test_log[$i]}.runner"; then
+                job_state[$i]=done; test_status[$i]="ошибка"
+                MT_STATUS["${test_funcs[$i]}"]="ошибка"
+                printf '  [%s] Не удалось подготовить файлы: %s\n' "$((i+1))" "${test_names[$i]}"
+                mt_test_is_probe "${test_funcs[$i]}" && pending_probes=$((pending_probes-1))
+                continue
+            fi
+            printf '  [%s] Запуск: %s\n' "$((i+1))" "${test_names[$i]}"
+            setsid bash -o pipefail -c '
+                printf "%s\n" "$BASHPID" > "$3" || exit 1
+                cd "$4" || exit 1
+                export TMPDIR="$4/tmp" SCRIPT_CAPTURE=plain
+                capture_test "$1" "$2"
+            ' _ "${test_funcs[$i]}" "${test_log[$i]}" "${job_group[$i]}" "$SUMMARY_DIR/work-$i" > "${test_log[$i]}.runner" 2>&1 </dev/null &
+            job_pid[$i]=$!; job_started[$i]=$SECONDS; job_state[$i]=running; active=$((active+1))
+            if mt_test_is_probe "${test_funcs[$i]}"; then
+                pending_probes=$((pending_probes-1))
+                case "${test_funcs[$i]}" in run_ip_check_place|run_ip_quality) busy_ipcheck=1 ;; esac
+            else break; fi
+        done
+        (( tty )) && mt_parallel_progress
+        if (( SECONDS-last_ping >= 30 )); then mt_run_activity ping; last_ping=$SECONDS; fi
+        (( completed < ${#test_funcs[@]} )) && sleep .2
+    done
+    (( tty )) && printf '\033[r\033[%d;1H\033[J\033[?25h' "$panel_top"
+    trap - INT TERM HUP EXIT
+    [[ -n "$old_int" ]] && eval "$old_int"
+    [[ -n "$old_term" ]] && eval "$old_term"
+    [[ -n "$old_hup" ]] && eval "$old_hup"
+    [[ -n "$old_exit" ]] && eval "$old_exit"
+    (( monitor )) && set -m
+    return "$stop"
+}
+
 # Дополняет строку пробелами до нужной ШИРИНЫ В СИМВОЛАХ. printf %-Ns тут не
 # годится: в C/POSIX-локали он считает байты, и кириллица разъезжает вдвое.
 pad_to() {
@@ -573,7 +826,7 @@ mt_select_tests() {
         printf '\033[H\033[J'
         echo -e "${CYAN}${BOLD}  МУЛЬТИТЕСТ — что запускать${NC}"
         echo ""
-        echo -e "  ${BOLD}↑↓${NC} выбор  ${BOLD}ПРОБЕЛ${NC} отметить  ${BOLD}A${NC} все  ${BOLD}N${NC} снять все  ${BOLD}F${NC} только быстрые  ${BOLD}ENTER${NC} запуск  ${BOLD}Q${NC} выход"
+        echo -e "  ${BOLD}↑↓${NC} выбор  ${BOLD}ПРОБЕЛ${NC} отметить  ${BOLD}A${NC} все  ${BOLD}N${NC} снять все  ${BOLD}F${NC} быстрые  ${BOLD}P${NC} потоки  ${BOLD}ENTER${NC} запуск  ${BOLD}Q${NC} выход"
         echo ""
         for ((i=0;i<n;i++)); do
             need=$(missing_deps_for "${all_funcs[$i]}")
@@ -595,7 +848,8 @@ mt_select_tests() {
         done
         need=$(missing_deps_for $(for ((i=0;i<n;i++)); do [[ "${MT_SEL[$i]}" == "1" ]] && printf '%s ' "${all_funcs[$i]}"; done))
         echo ""
-        echo -e "  Выбрано ${BOLD}${selected}${NC} из ${n} · всего $(fmt_eta $total)${need:+ · доставим: ${YELLOW}${need// /, }${NC}}"
+        echo -e "  Выбрано ${BOLD}${selected}${NC} из ${n} · последовательно $(fmt_eta $total)${need:+ · доставим: ${YELLOW}${need// /, }${NC}}"
+        echo -e "  ${BOLD}P${NC} · параллельных IP-проверок: ${BOLD}${SERVERGRADE_JOBS}${NC} · CPU, диск и скорость — отдельно"
         echo -e "  ${CYAN}Время примерное${NC} — зависит от канала и соседей по ноде."
 
         IFS= read -rsn1 key
@@ -609,6 +863,7 @@ mt_select_tests() {
             ф|Ф) key=a ;;   # A — все
             т|Т) key=n ;;   # N — снять все
             а|А) key=f ;;   # F — только быстрые
+            з|З) key=p ;;   # P — число параллельных проверок
             й|Й) key=q ;;   # Q — выход
             л|Л) key=k ;;   # k — вверх
             о|О) key=j ;;   # j — вниз
@@ -626,6 +881,7 @@ mt_select_tests() {
             j|J)  (( cur = (cur + 1) % n )) ;;
             a|A)  for ((i=0;i<n;i++)); do MT_SEL[$i]=1; done ;;
             n|N)  for ((i=0;i<n;i++)); do MT_SEL[$i]=0; done ;;
+            p|P)  SERVERGRADE_JOBS=$((SERVERGRADE_JOBS % 4 + 1)) ;;
             f|F)  for ((i=0;i<n;i++)); do
                       if (( all_secs[i] <= 60 )); then MT_SEL[$i]=1; else MT_SEL[$i]=0; fi
                   done ;;
@@ -725,14 +981,20 @@ run_all() {
         printf "    ${GREEN}%2d.${NC} %s\n" "$((k + 1))" "${test_names[$k]}"
     done
     echo ""
-    echo -e "  ${YELLOW}Ctrl+C${NC} во время теста — пропустить текущий"
-    [[ -n "$single" ]] || echo -e "  Тесты идут автоматически; нажмите любую клавишу, чтобы выбрать вручную."
+    if (( SERVERGRADE_JOBS > 1 && ${#test_funcs[@]} > 1 )); then
+        echo -e "  Параллельно до ${BOLD}${SERVERGRADE_JOBS}${NC} IP-проверок. Замеры производительности — отдельно."
+        echo -e "  ${YELLOW}Ctrl+C${NC} — пропустить активные тесты; остальные продолжатся автоматически."
+    else
+        echo -e "  Последовательный режим · ${YELLOW}Ctrl+C${NC} — пропустить текущий тест"
+        [[ -n "$single" ]] || echo -e "  Тесты идут автоматически; нажмите любую клавишу, чтобы выбрать вручную."
+    fi
     echo ""
     install_deps_for "${test_funcs[@]}" || return 1
     SUMMARY_DIR=$(mktemp -d "${TMPDIR:-/tmp}/multitest-summary.XXXXXXXX") || {
         echo -e "${RED}Не удалось создать каталог для результатов.${NC}"
         return 1
     }
+    SUMMARY_DIR=$(cd -- "$SUMMARY_DIR" && pwd -P) || return 1
     mt_request_challenge
     mt_run_activity start
 
@@ -752,6 +1014,21 @@ run_all() {
     local total=${#test_funcs[@]}
     local i total_weight=0 done_weight=0
     for i in "${test_secs[@]}"; do total_weight=$((total_weight+i)); done
+
+    for i in "${!test_funcs[@]}"; do
+        test_status[$i]="пропущен"
+        test_metric[$i]=""
+        test_log[$i]="$SUMMARY_DIR/test-$((i+1)).log"
+    done
+
+    if (( SERVERGRADE_JOBS > 1 && total > 1 )); then
+        local runner_rc=0
+        mt_run_parallel_tests "$SERVERGRADE_JOBS" || runner_rc=$?
+        if (( runner_rc != 0 )); then
+            mt_run_activity end
+            return "$runner_rc"
+        fi
+    else
 
     for i in $(seq 0 $((total - 1))); do
         local num=$((i + 1))
@@ -792,8 +1069,9 @@ run_all() {
         MULTITEST_SKIPPED=0
         mt_run_activity ping
         trap multitest_skip_handler INT
+        local test_rc=0
         run_test_with_progress "${test_funcs[$i]}" "${test_log[$i]}" "${test_names[$i]}" \
-            "${test_secs[$i]}" "$done_weight" "$total_weight" "$num" "$total"
+            "${test_secs[$i]}" "$done_weight" "$total_weight" "$num" "$total" || test_rc=$?
         trap - INT
 
         if [[ $MULTITEST_SKIPPED -eq 1 ]]; then
@@ -801,14 +1079,15 @@ run_all() {
             echo -e "  ${YELLOW}Тест пропущен (Ctrl+C).${NC}"
             test_status[$i]="пропущен"
         else
-            test_status[$i]="выполнен"
-            [[ -s "${test_log[$i]}" ]] || test_status[$i]="ошибка"
+            test_status[$i]="ошибка"
+            (( test_rc == 0 )) && [[ -s "${test_log[$i]}" ]] && test_status[$i]="выполнен"
             parse_test_output "${test_funcs[$i]}" "${test_log[$i]}" \
                 "$SUMMARY_DIR/${test_funcs[$i]}.metrics" "$SUMMARY_DIR/${test_funcs[$i]}.services"
         fi
         MT_STATUS["${test_funcs[$i]}"]="${test_status[$i]}"
         done_weight=$((done_weight + test_secs[i]))
     done
+    fi
 
     echo ""
     echo -e "${GREEN}${BOLD}Все тесты завершены! (${total}/${total})${NC}"
@@ -1112,7 +1391,7 @@ strip_ansi() {
     # 1) убираем ANSI; 2) хвостовой \r (из \r\n); 3) \r-перезаписи: оставляем только
     # текст после последнего \r в строке — как показывает терминал (иначе прогресс-
     # строки вида "Performing iperf3..." слипались с результатом "Clouvider | London ...").
-    sed -r 's/\x1B\[[0-9;]*[a-zA-Z]//g; s/\x1B\][^\x07]*\x07//g; s/\r$//; s/.*\r//'
+    sed -r 's/\x1B\[[0-?]*[ -/]*[@-~]//g; s/\x1B\][^\x07]*\x07//g; s/\r$//; s/.*\r//'
 }
 
 # Запуск теста с захватом вывода в лог (для парсинга метрик).
@@ -1127,9 +1406,10 @@ capture_test() {
               run_ip_check_place run_bench_sh run_ip_quality run_sysbench_cpu
 
     if [[ "$SCRIPT_CAPTURE" == "util" ]]; then
-        COLUMNS=200 script -q -c "stty cols 200 2>/dev/null; bash -c '$fn'" "$logfile"
+        COLUMNS=200 script -q -e -c "stty cols 200 2>/dev/null; bash -o pipefail -c '$fn'" "$logfile"
     else
-        COLUMNS=200 bash -c "$fn" 2>&1 | tee "$logfile"
+        COLUMNS=200 bash -o pipefail -c "$fn" 2>&1 | tee "$logfile"
+        return "${PIPESTATUS[0]}"
     fi
 }
 
@@ -3320,8 +3600,8 @@ while true; do
     [[ "${MT_PROMO_BELOW:-0}" == "1" ]] && printf '\033[J'
 
     case "$choice" in
-        [1-9]|10|11) run_all "$choice"; pause_prompt ;;
-        12) run_all; pause_prompt ;;
+        [1-9]|10|11) run_all "$choice"; run_rc=$?; (( run_rc >= 128 )) && exit "$run_rc"; pause_prompt ;;
+        12) run_all; run_rc=$?; (( run_rc >= 128 )) && exit "$run_rc"; pause_prompt ;;
         13) show_utilities_menu ;;
         0)  echo -e "${GREEN}До свидания!${NC}"; exit 0 ;;
         *)  echo -e "${RED}Неверный выбор. Попробуйте снова.${NC}"; pause_prompt ;;
