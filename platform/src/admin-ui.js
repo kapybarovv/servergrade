@@ -49,7 +49,7 @@ const styles = `
   border-radius:13px;
   min-width:0
 }
-.image-preview img {
+.image-preview img,.image-preview video {
   width:128px;
   height:78px;
   object-fit:contain;
@@ -814,9 +814,9 @@ export function renderAdminPage(authenticated = false) {
             <input type="hidden" name="banner_id">
             <div class="form-grid">
               <label class="field wide">Название<input name="title" maxlength="120" required placeholder="Название баннера" autocomplete="off"></label>
-              <label class="field">Загрузить изображение<input type="file" name="image_file" accept="image/png,image/jpeg,image/webp"><span class="field-hint">PNG, JPEG или WebP до 750 КБ. Изображение сохранится на сайте.</span></label>
-              <label class="field">Или ссылка на изображение<input type="url" name="image_url" maxlength="2048" placeholder="https://example.com/banner.webp" inputmode="url" autocomplete="off"><span class="field-hint">При редактировании оставьте поле пустым, чтобы сохранить загруженное изображение.</span></label>
-              <div class="image-preview wide" data-image-preview hidden><img alt="Предпросмотр баннера"><div><span data-image-label></span><br><button class="button secondary small" type="button" data-clear-image>Сбросить выбор</button></div></div>
+              <label class="field">Загрузить баннер<input type="file" name="image_file" accept="image/png,image/jpeg,image/webp,video/mp4"><span class="field-hint">PNG, JPEG, WebP или MP4 до 750 КБ. Файл сохранится на сайте.</span></label>
+              <label class="field">Или ссылка на баннер<input type="url" name="image_url" maxlength="2048" placeholder="https://example.com/banner.webp" inputmode="url" autocomplete="off"><span class="field-hint">При редактировании оставьте поле пустым, чтобы сохранить загруженный файл.</span></label>
+              <div class="image-preview wide" data-image-preview hidden><img alt="Предпросмотр баннера"><video muted autoplay loop playsinline controls preload="metadata" aria-label="Предпросмотр видеобаннера" hidden></video><div><span data-image-label></span><br><button class="button secondary small" type="button" data-clear-image>Сбросить выбор</button></div></div>
               <label class="field wide">Ссылка при нажатии<input type="url" name="target_url" maxlength="2048" required placeholder="https://example.com" inputmode="url" autocomplete="off"></label>
             </div>
             <div class="form-bottom"><div class="form-options"><label class="toggle"><input type="checkbox" name="enabled" checked>Показывать на сайте</label><label class="order-field">Порядок<input type="number" name="sort_order" value="0" min="0" max="9999" step="1" required></label></div><div class="form-actions"><button class="button secondary" type="button" data-cancel-edit hidden>Отмена</button><button class="button" type="submit">${icon("plus")}<span data-save-label>Добавить баннер</span></button></div></div>

@@ -65,6 +65,7 @@
   const imageFile = form.elements.image_file;
   let imageData = "";
   let currentImage = "";
+  let currentMime = "";
   let imageReadVersion = 0;
   let loadVersion = 0;
   let searchTimer;
@@ -86,19 +87,38 @@
   }
 
   function safeImage(value) {
-    if (/^\/banners\/\d+$/.test(value)) return value;
+    if (/^\/banners\/\d+(?:\?v=[a-f0-9]{64})?$/.test(value)) return value;
     if (/^\/api\/admin\/banners\/\d+\/image$/.test(value)) return value;
-    if (/^data:image\/(png|jpeg|webp);base64,[a-z0-9+/=]+$/i.test(value)) return value;
+    if (/^data:(?:image\/(png|jpeg|webp)|video\/mp4);base64,[a-z0-9+/=]+$/i.test(value)) return value;
     return safeHttps(value);
   }
 
-  function showPreview(value) {
+  function isVideo(value, mime = "") {
+    return mime === "video/mp4" || /^data:video\/mp4;/i.test(value) || /\.mp4(?:[?#]|$)/i.test(value);
+  }
+
+  function showPreview(value, mime = "") {
     const url = safeImage(value);
     preview.hidden = !url;
     const image = preview.querySelector("img");
-    if (url) image.src = url;
+    const video = preview.querySelector("video");
+    const movie = isVideo(url, mime);
+    image.hidden = movie;
+    video.hidden = !movie;
+    if (url && !movie) image.src = url;
     else image.removeAttribute("src");
-    preview.querySelector("[data-image-label]").textContent = imageData ? "Изображение готово к загрузке на сайт" : "Текущее изображение баннера";
+    if (url && movie) {
+      video.muted = true;
+      video.src = url;
+      video.play?.()?.catch(() => {});
+    } else {
+      video.pause?.();
+      video.removeAttribute("src");
+      video.load?.();
+    }
+    preview.querySelector("[data-image-label]").textContent = imageData
+      ? (movie ? "Видео готово к загрузке на сайт" : "Изображение готово к загрузке на сайт")
+      : (movie ? "Текущее видео баннера" : "Текущее изображение баннера");
     preview.querySelector("[data-clear-image]").hidden = !imageData;
   }
 
@@ -130,6 +150,7 @@
     cancelEdit.hidden = true;
     imageData = "";
     currentImage = "";
+    currentMime = "";
     imageReadVersion++;
     form.querySelector("[type=submit]").disabled = false;
     showPreview("");
@@ -144,7 +165,8 @@
     imageReadVersion++;
     form.querySelector("[type=submit]").disabled = false;
     currentImage = banner.image_url || "";
-    showPreview(currentImage);
+    currentMime = banner.image_mime || "";
+    showPreview(currentImage, currentMime);
     form.elements.target_url.value = banner.target_url || "";
     form.elements.enabled.checked = Boolean(Number(banner.enabled));
     form.elements.sort_order.value = banner.sort_order || 0;
@@ -165,11 +187,22 @@
     const banners = [...state.banners].sort((a, b) => Number(a.sort_order) - Number(b.sort_order));
     for (const banner of banners) {
       const card = node("article", "banner-card");
-      const image = node("img", "banner-image");
       const imageUrl = safeImage(banner.image_url);
+      const movie = isVideo(imageUrl, banner.image_mime);
+      const image = node(movie ? "video" : "img", "banner-image");
+      if (movie) {
+        image.muted = true;
+        image.autoplay = true;
+        image.loop = true;
+        image.playsInline = true;
+        image.preload = "metadata";
+        image.setAttribute("playsinline", "");
+        image.setAttribute("aria-label", banner.title || "Видеобаннер");
+      } else {
+        image.alt = banner.title || "Баннер";
+        image.loading = "lazy";
+      }
       if (imageUrl) image.src = imageUrl;
-      image.alt = banner.title || "Баннер";
-      image.loading = "lazy";
       image.referrerPolicy = "no-referrer";
       const info = node("div", "banner-info");
       info.append(node("div", "banner-title", banner.title || "Без названия"));
@@ -177,6 +210,7 @@
       const meta = node("div", "banner-meta");
       const enabled = Number(banner.enabled) === 1;
       meta.append(node("span", "badge" + (enabled ? " enabled" : ""), enabled ? "Активен" : "Скрыт"));
+      meta.append(node("span", "", movie ? "Видео" : "Изображение"));
       meta.append(node("span", "", "Порядок " + (Number(banner.sort_order) || 0)));
       info.append(meta);
       const controls = node("div", "banner-actions");
@@ -295,11 +329,11 @@
     const targetUrl = safeHttps(fields.target_url.value.trim());
     const editing = Boolean(fields.banner_id.value);
     if (!targetUrl || (fields.image_url.value.trim() && !imageUrl)) {
-      showFeedback("Укажите полные HTTPS-ссылки на изображение и страницу перехода.", true);
+      showFeedback("Укажите полные HTTPS-ссылки на баннер и страницу перехода.", true);
       return;
     }
     if (!editing && !imageData && !imageUrl) {
-      showFeedback("Выберите изображение или укажите HTTPS-ссылку на него.", true);
+      showFeedback("Выберите изображение или MP4 либо укажите HTTPS-ссылку на баннер.", true);
       return;
     }
     const data = {
@@ -326,13 +360,13 @@
     submit.disabled = false;
     imageData = "";
     if (!file) {
-      showPreview(currentImage || form.elements.image_url.value);
+      showPreview(currentImage || form.elements.image_url.value, currentImage ? currentMime : "");
       return;
     }
-    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type) || file.size > 750 * 1024) {
+    if (!["image/png", "image/jpeg", "image/webp", "video/mp4"].includes(file.type) || file.size > 750 * 1024) {
       imageFile.value = "";
-      showPreview(currentImage || form.elements.image_url.value);
-      showFeedback("Выберите PNG, JPEG или WebP размером до 750 КБ.", true);
+      showPreview(currentImage || form.elements.image_url.value, currentImage ? currentMime : "");
+      showFeedback("Выберите PNG, JPEG, WebP или MP4 размером до 750 КБ.", true);
       return;
     }
     const reader = new FileReader();
@@ -348,19 +382,19 @@
       if (version !== imageReadVersion) return;
       submit.disabled = false;
       imageFile.value = "";
-      showFeedback("Не удалось прочитать изображение. Выберите файл ещё раз.", true);
+      showFeedback("Не удалось прочитать файл. Выберите его ещё раз.", true);
     };
     reader.readAsDataURL(file);
   });
   form.elements.image_url.addEventListener("input", () => {
-    if (!imageData) showPreview(form.elements.image_url.value || currentImage);
+    if (!imageData) showPreview(form.elements.image_url.value || currentImage, form.elements.image_url.value ? "" : currentMime);
   });
   document.querySelector("[data-clear-image]").addEventListener("click", () => {
     imageFile.value = "";
     imageData = "";
     imageReadVersion++;
     form.querySelector("[type=submit]").disabled = false;
-    showPreview(form.elements.image_url.value || currentImage);
+    showPreview(form.elements.image_url.value || currentImage, form.elements.image_url.value ? "" : currentMime);
   });
   cancelEdit.addEventListener("click", resetForm);
   resultSearch.addEventListener("input", () => {

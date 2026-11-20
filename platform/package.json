@@ -10,6 +10,8 @@
     "deploy": "wrangler deploy",
     "test:banner-cache": "node --test ./test/banner-cache.test.mjs",
     "test:admin-client": "node --test ./test/admin-client.test.mjs",
+    "test:png": "node --test ./test/png.test.mjs",
+    "test:seo": "node --test ./test/seo.test.mjs",
     "db:local": "wrangler d1 execute servergrade --local --file=./schema.sql",
     "db:remote": "wrangler d1 execute servergrade --remote --file=./schema.sql"
   },

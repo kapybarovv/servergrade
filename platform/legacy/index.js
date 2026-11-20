@@ -21,7 +21,8 @@ export default {
         const { value, done } = await reader.read();
         if (done) break;
         size += value.byteLength;
-        if (size > MAX_BODY_BYTES) {
+        const bodyLimit = /^\/api\/results\/\d{8}\/assets$/.test(url.pathname) ? 9_000_000 : MAX_BODY_BYTES;
+        if (size > bodyLimit) {
           await reader.cancel();
           return new Response("Payload too large", { status: 413 });
         }

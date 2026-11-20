@@ -136,7 +136,7 @@ async function readJson(request, maxBytes = 16_384) {
 
 function uploadedImage(value) {
   if (typeof value !== "string" || value.length > Math.ceil(MAX_IMAGE_BYTES / 3) * 4 + 40) return null;
-  const match = value.match(/^data:(image\/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$/);
+  const match = value.match(/^data:(image\/(?:png|jpeg|webp)|video\/mp4);base64,([A-Za-z0-9+/=]+)$/);
   if (!match || match[2].length % 4 !== 0) return null;
   try {
     const binary = atob(match[2]);
@@ -145,7 +145,17 @@ function uploadedImage(value) {
     const png = bytes.length >= 8 && [137, 80, 78, 71, 13, 10, 26, 10].every((byte, index) => bytes[index] === byte);
     const jpeg = bytes.length >= 3 && bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255;
     const webp = bytes.length >= 12 && binary.slice(0, 4) === "RIFF" && binary.slice(8, 12) === "WEBP";
-    if (!(match[1] === "image/png" && png || match[1] === "image/jpeg" && jpeg || match[1] === "image/webp" && webp)) return null;
+    let mp4 = false;
+    if (bytes.length >= 16 && binary.slice(4, 8) === "ftyp") {
+      const boxSize = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(0);
+      const accepted = new Set(["isom", "iso2", "iso3", "iso4", "iso5", "iso6", "iso7", "iso8", "iso9", "mp41", "mp42", "avc1", "M4V ", "dash", "cmfc", "cmfs", "MSNV"]);
+      const major = binary.slice(8, 12);
+      if (boxSize >= 16 && boxSize <= bytes.length && boxSize % 4 === 0 && !["qt  ", "avif", "avis", "heic", "heix", "mif1", "msf1", "M4A "].includes(major)) {
+        mp4 = accepted.has(major);
+        for (let offset = 16; !mp4 && offset < boxSize; offset += 4) mp4 = accepted.has(binary.slice(offset, offset + 4));
+      }
+    }
+    if (!(match[1] === "image/png" && png || match[1] === "image/jpeg" && jpeg || match[1] === "image/webp" && webp || match[1] === "video/mp4" && mp4)) return null;
     return { mime: match[1], data: match[2] };
   } catch {
     return null;
@@ -160,6 +170,8 @@ async function imageResponse(request, banner, privateImage = false) {
     "cache-control": privateImage ? "private, no-store" : "public, max-age=0, must-revalidate",
     "x-content-type-options": "nosniff",
     "content-security-policy": "default-src 'none'; sandbox",
+    "accept-ranges": "bytes",
+    "content-length": String(bytes.byteLength),
   };
   if (!privateImage) {
     const digest = bytesHex(new Uint8Array(await crypto.subtle.digest("SHA-256", bytes)));
@@ -167,7 +179,7 @@ async function imageResponse(request, banner, privateImage = false) {
     headers.etag = etag;
     if (request.headers.get("if-none-match") === etag) return new Response(null, { status: 304, headers });
   }
-  return new Response(request.method === "HEAD" ? null : bytes, { headers });
+  return mediaResponse(request, new Response(request.method === "HEAD" ? null : bytes, { headers }));
 }
 
 function missingBanner(request) {
@@ -179,6 +191,48 @@ function imageEtagMatches(request, etag) {
     const tag = value.trim();
     return tag === "*" || tag.replace(/^W\//, "") === etag;
   });
+}
+
+function byteRange(value, length) {
+  if (value.length > 160) return null;
+  const match = value.trim().match(/^bytes=(\d*)-(\d*)$/i);
+  if (!match || !match[1] && !match[2] || length < 1) return null;
+  const size = BigInt(length);
+  if (!match[1]) {
+    const suffix = BigInt(match[2]);
+    return suffix > 0n ? { start: Number(suffix >= size ? 0n : size - suffix), end: length - 1 } : null;
+  }
+  const start = BigInt(match[1]), requestedEnd = match[2] ? BigInt(match[2]) : size - 1n;
+  if (start >= size || requestedEnd < start) return null;
+  return { start: Number(start), end: Number(requestedEnd >= size ? size - 1n : requestedEnd) };
+}
+
+async function mediaResponse(request, response) {
+  if (request.method === "HEAD") return new Response(null, { status: response.status, headers: response.headers });
+  const requested = request.headers.get("range");
+  if (requested === null) return response;
+  const ifRange = request.headers.get("if-range");
+  // Only a matching strong ETag can validate our immutable representation.
+  // We do not advertise Last-Modified, so date/weak validators get full bytes.
+  if (ifRange !== null && (!response.headers.has("etag") || ifRange !== response.headers.get("etag"))) return response;
+  let bytes;
+  let length = Number(response.headers.get("content-length"));
+  if (!Number.isSafeInteger(length) || length < 1) {
+    bytes = new Uint8Array(await response.arrayBuffer());
+    length = bytes.byteLength;
+  }
+  const range = byteRange(requested, length), headers = new Headers(response.headers);
+  if (!range) {
+    headers.set("content-range", `bytes */${length}`);
+    headers.set("content-length", "0");
+    headers.set("cache-control", "no-store");
+    return new Response(null, { status: 416, headers });
+  }
+  if (!bytes) bytes = new Uint8Array(await response.arrayBuffer());
+  const part = bytes.subarray(range.start, range.end + 1);
+  headers.set("content-range", `bytes ${range.start}-${range.end}/${length}`);
+  headers.set("content-length", String(part.byteLength));
+  return new Response(part, { status: 206, headers });
 }
 
 export async function bannerImageResponse(request, env, ctx) {
@@ -202,6 +256,7 @@ export async function bannerImageResponse(request, env, ctx) {
     "cache-control": "public, max-age=31536000, immutable",
     "x-content-type-options": "nosniff",
     "content-security-policy": "default-src 'none'; sandbox",
+    "accept-ranges": "bytes",
     etag: '"' + banner.version + '"',
   };
   if (imageEtagMatches(request, headers.etag)) return new Response(null, { status: 304, headers });
@@ -214,12 +269,20 @@ export async function bannerImageResponse(request, env, ctx) {
   if (cache) {
     try {
       const cached = await cache.match(cacheKey);
-      if (cached) return new Response(request.method === "HEAD" ? null : cached.body, { status: cached.status, headers: cached.headers });
+      if (cached) return mediaResponse(request, cached);
     } catch {
       // Cache availability must not prevent the image from being served.
     }
   }
-  if (request.method === "HEAD") return new Response(null, { headers });
+  if (request.method === "HEAD") {
+    if (banner.image_mime === "video/mp4") {
+      const size = await env.DB.prepare("SELECT length(b.image_data) encoded_length,substr(b.image_data,-2) ending FROM admin_banners b JOIN admin_banner_images i ON i.banner_id=b.id WHERE b.id=? AND b.enabled=1 AND i.version=?")
+        .bind(id, banner.version).first();
+      if (!size) return missingBanner(request);
+      headers["content-length"] = String(size.encoded_length / 4 * 3 - (size.ending.endsWith("==") ? 2 : size.ending.endsWith("=") ? 1 : 0));
+    }
+    return new Response(null, { headers });
+  }
   const image = await env.DB.prepare("SELECT b.image_mime,b.image_data FROM admin_banners b JOIN admin_banner_images i ON i.banner_id=b.id WHERE b.id=? AND b.enabled=1 AND b.image_data<>'' AND i.version=?")
     .bind(id, banner.version).first();
   if (!image) return missingBanner(request);
@@ -231,7 +294,7 @@ export async function bannerImageResponse(request, env, ctx) {
     if (ctx?.waitUntil) ctx.waitUntil(put);
     else await put;
   }
-  return response;
+  return mediaResponse(request, response);
 }
 
 async function login(request, env, data) {
@@ -290,7 +353,7 @@ async function changeBanner(env, data) {
   const imageProvided = Boolean(data.image_data || data.image_url);
   if (data.image_data) {
     const image = uploadedImage(data.image_data);
-    if (!image) return error("invalid_image", "Выберите PNG, JPEG или WebP размером до 750 КБ.", 400);
+    if (!image) return error("invalid_image", "Выберите PNG, JPEG, WebP или MP4 размером до 750 КБ.", 400);
     imageUrl = "";
     imageMime = image.mime;
     imageData = image.data;

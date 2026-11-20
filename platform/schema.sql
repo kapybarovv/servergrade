@@ -59,6 +59,33 @@ CREATE TABLE IF NOT EXISTS result_assets (
   FOREIGN KEY (result_id) REFERENCES results(id) ON DELETE CASCADE
 );
 
+-- Optional immutable rasters are prepared by the runner or offline backfill.
+-- The Worker serves PNG bytes without performing per-request rasterization.
+CREATE TABLE IF NOT EXISTS result_png_assets (
+  result_id TEXT NOT NULL,
+  position INTEGER NOT NULL,
+  source_sha256 TEXT NOT NULL,
+  png_sha256 TEXT NOT NULL,
+  width INTEGER NOT NULL,
+  height INTEGER NOT NULL,
+  byte_length INTEGER NOT NULL,
+  data BLOB NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (result_id, position),
+  FOREIGN KEY (result_id, position) REFERENCES result_assets(result_id, position) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS result_png_previews (
+  result_id TEXT PRIMARY KEY,
+  png_sha256 TEXT NOT NULL,
+  width INTEGER NOT NULL,
+  height INTEGER NOT NULL,
+  byte_length INTEGER NOT NULL,
+  data BLOB NOT NULL,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  FOREIGN KEY (result_id) REFERENCES results(id) ON DELETE CASCADE
+);
+
 CREATE TABLE IF NOT EXISTS result_terminal_reports (
   result_id TEXT PRIMARY KEY,
   content TEXT NOT NULL,

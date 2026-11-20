@@ -1616,7 +1616,8 @@ publish_result_page() {
 }
 
 upload_result_assets() {
-    local id token endpoint file name pos=0 failed=0
+    local id token endpoint file name png encoded preview_encoded pos=0 failed=0
+    local -a png_fields
     id=$(cat "$SUMMARY_DIR/public-id.txt" 2>/dev/null); token=$(cat "$SUMMARY_DIR/upload-token.txt" 2>/dev/null)
     [[ "$id" =~ ^[0-9]{8}$ && -n "$token" ]] || return 1
     endpoint="${SERVERGRADE_PUBLISH_URL%/api/results}/api/results/${id}/assets"
@@ -1626,9 +1627,24 @@ upload_result_assets() {
         [[ -s "$file" ]] || continue
         pos=$((pos+1)); (( pos <= 8 )) || break
         name=$(basename "$file" .svg); name=${name#??-}; name=${name//-/ }
+        png="${file%.svg}.png"; png_fields=()
+        # PNG передаётся вместе с SVG одним запросом и одним upload token.
+        # Сервер сохраняет обе версии атомарно, без повторного зачёта страницы.
+        if [[ -s "$png" ]] && (( $(wc -c < "$png") <= 1800000 )); then
+            encoded="$SUMMARY_DIR/asset-${pos}.png.base64"
+            if base64 < "$png" | tr -d '\r\n' > "$encoded" && [[ -s "$encoded" ]]; then
+                png_fields+=( --data-urlencode "png@$encoded" )
+            fi
+        fi
+        if (( pos == 1 )) && [[ -s "$SUMMARY_DIR/preview.png" ]]; then
+            preview_encoded="$SUMMARY_DIR/preview.png.base64"
+            if base64 < "$SUMMARY_DIR/preview.png" | tr -d '\r\n' > "$preview_encoded" && [[ -s "$preview_encoded" ]]; then
+                png_fields+=( --data-urlencode "preview_png@$preview_encoded" )
+            fi
+        fi
         curl -fsS --max-time 45 -X POST -H 'Content-Type: application/x-www-form-urlencoded' \
             --data-urlencode "token=$token" --data-urlencode "position=$pos" \
-            --data-urlencode "name=$name" --data-urlencode "svg@$file" "$endpoint" >/dev/null || failed=1
+            --data-urlencode "name=$name" --data-urlencode "svg@$file" "${png_fields[@]}" "$endpoint" >/dev/null || failed=1
     done < "$SUMMARY_DIR/pages.list"
     (( pos > 0 && failed == 0 ))
 }
@@ -3339,10 +3355,7 @@ step_build_svg() {
 step_render_png() {
     local svg="$SUMMARY_DIR/summary.svg" png="$SUMMARY_DIR/summary.png"
     printf '%s' "$svg" > "$SUMMARY_DIR/out.path"
-    if   command -v rsvg-convert &>/dev/null; then rsvg-convert -w 2200 -o "$png" "$svg" 2>/dev/null
-    elif command -v convert      &>/dev/null; then convert -density 220 -background none "$svg" "$png" 2>/dev/null
-    elif command -v magick       &>/dev/null; then magick  -density 220 -background none "$svg" "$png" 2>/dev/null
-    fi
+    mt_render_png_file "$svg" "$png" || return 1
     [[ -s "$png" ]] || return 1
     printf '%s' "$png" > "$SUMMARY_DIR/out.path"
 }
@@ -3369,20 +3382,84 @@ MT_PAGE_SCALE="${MT_PAGE_SCALE:-2}"
 MT_ALBUM="${MT_ALBUM:-2}"
 MT_ALBUM_MAX=64
 
-# Рендер локального PNG при наличии конвертера. В манифест для сайта идёт SVG.
-# Высоту берём из MT_PAGE_H, который выставил построитель страницы: разбирать
-# её обратно из viewBox — лишний способ разойтись с тем, что нарисовано.
+# PNG хранится в D1: одна запись не должна превышать 2 МБ. Сначала ограничиваем
+# геометрию, затем при необходимости уменьшаем ширину, сохраняя пропорции.
+mt_render_png_file() {
+    local svg="$1" png="$2" max_width="${3:-1200}" max_height="${4:-4800}" exact="${5:-0}"
+    local svg_width svg_height width height height_cap bytes tmp="${2%.png}.rendering.png"
+    local -a geo
+    [[ -s "$svg" ]] || return 1
+    read -r svg_width svg_height <<< "$(sed -nE 's/.*viewBox="0 0 ([0-9.]+) ([0-9.]+)".*/\1 \2/p' "$svg" | head -1)"
+    [[ "$svg_width" =~ ^[0-9]+([.][0-9]+)?$ && "$svg_height" =~ ^[0-9]+([.][0-9]+)?$ ]] || return 1
+    awk -v w="$svg_width" -v h="$svg_height" 'BEGIN {exit !(w>0 && h>0)}' || return 1
+    for width in "$max_width" 960 768 640; do
+        (( width <= max_width )) || continue
+        (( exact == 0 || width == max_width )) || continue
+        height=$(awk -v w="$width" -v sw="$svg_width" -v sh="$svg_height" 'BEGIN {printf "%.0f", w * sh / sw}')
+        height_cap=$(( max_height * width / max_width ))
+        if (( height > height_cap )); then geo=( -h "$height_cap" ); else geo=( -w "$width" ); fi
+        rm -f "$tmp"
+        if command -v rsvg-convert &>/dev/null; then
+            rsvg-convert "${geo[@]}" -o "$tmp" "$svg" 2>/dev/null || continue
+        elif command -v magick &>/dev/null; then
+            magick -background none "$svg" -resize "${width}x${height_cap}>" "$tmp" 2>/dev/null || continue
+        elif command -v convert &>/dev/null; then
+            convert -background none "$svg" -resize "${width}x${height_cap}>" "$tmp" 2>/dev/null || continue
+        else
+            rm -f "$tmp" "$png"
+            return 1
+        fi
+        [[ -s "$tmp" ]] || continue
+        bytes=$(wc -c < "$tmp")
+        if (( bytes <= 1800000 )) && [[ "$(head -c8 "$tmp" | od -An -tx1 | tr -d ' \n')" == "89504e470d0a1a0a" ]]; then
+            mv -f "$tmp" "$png"
+            return $?
+        fi
+    done
+    rm -f "$tmp" "$png"
+    return 1
+}
+
+# В манифесте сохраняем SVG, а PNG рядом с ним прикладывается при публикации.
 mt_render_page() {
     local base="$1"
     local svg="$base.svg" png="$base.png"
-    local w=$(( W * MT_PAGE_SCALE )) h=$(( MT_PAGE_H * MT_PAGE_SCALE ))
-    local -a geo
-    if (( h > MT_MAXSIDE )); then geo=( -h "$MT_MAXSIDE" ); else geo=( -w "$w" ); fi
-    if   command -v rsvg-convert &>/dev/null; then rsvg-convert "${geo[@]}" -o "$png" "$svg" 2>/dev/null
-    elif command -v magick       &>/dev/null; then magick  -density 220 -background none "$svg" -resize "${w}x${MT_MAXSIDE}>" "$png" 2>/dev/null
-    elif command -v convert      &>/dev/null; then convert -density 220 -background none "$svg" -resize "${w}x${MT_MAXSIDE}>" "$png" 2>/dev/null
-    fi
+    mt_render_png_file "$svg" "$png" || true
     printf '%s\n' "$svg" >> "$SUMMARY_DIR/pages.list"
+}
+
+# Отдельная горизонтальная карточка для ссылок в Telegram, Discord и соцсетях.
+# Рейтинг здесь не дублируем: его авторитетное значение рассчитывает Worker.
+step_build_preview_png() {
+    local location cpu cores ram disk stamp flag flag_x=64
+    location=$(vcut "${SYS_COUNTRY:-—} · ${SYS_CITY:-—}" 42 | xml_escape)
+    cpu=$(vcut "${SYS_CPU:-—}" 48 | xml_escape)
+    cores=$(printf '%s' "${SYS_CORES:-—}" | xml_escape)
+    ram=$(printf '%s' "${SYS_RAM:-—}" | xml_escape)
+    disk=$(vcut "${SYS_DISK:-—}" 28 | xml_escape)
+    stamp=$(date '+%d.%m.%Y')
+    flag=$(mt_apple_flag_b64 "${SYS_COUNTRY:-}")
+    [[ -n "$flag" ]] && flag_x=112
+    cat > "$SUMMARY_DIR/preview.svg" <<EOF
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1200 630" font-family="Manrope, Montserrat, DejaVu Sans, sans-serif">
+<rect width="1200" height="630" fill="#090c0b"/>
+<path d="M74 56h19l-12 37H62zM57 100h23l-4 13H53z" fill="#12c98b"/>
+<text x="110" y="101" fill="#f2f5f3" font-family="Montserrat, Manrope, sans-serif" font-size="35" font-weight="700">ServerGrade</text>
+<text x="1132" y="96" text-anchor="end" fill="#7e8983" font-size="21">$stamp</text>
+<text x="64" y="214" fill="#9ca7a1" font-size="25">Результаты тестирования сервера</text>
+<text x="64" y="278" fill="#f2f5f3" font-family="Montserrat, Manrope, sans-serif" font-size="35" font-weight="600">$cpu</text>
+<rect x="64" y="327" width="1072" height="112" rx="24" fill="#131916"/>
+<text x="94" y="365" fill="#8d9992" font-size="18">Ядра</text><text x="94" y="407" fill="#f2f5f3" font-size="31" font-weight="600">$cores</text>
+<text x="367" y="365" fill="#8d9992" font-size="18">RAM</text><text x="367" y="407" fill="#f2f5f3" font-size="31" font-weight="600">$ram</text>
+<text x="699" y="365" fill="#8d9992" font-size="18">Диск</text><text x="699" y="407" fill="#f2f5f3" font-size="27" font-weight="600">$disk</text>
+<text x="$flag_x" y="526" fill="#b9c3bd" font-size="26">$location</text>
+<text x="1136" y="526" text-anchor="end" fill="#12c98b" font-size="25" font-weight="600">servergrade.cc</text>
+EOF
+    if [[ -n "$flag" ]]; then
+        printf '<image x="64" y="500" width="34" height="28" href="data:image/png;base64,%s" xlink:href="data:image/png;base64,%s"/>\n' "$flag" "$flag" >> "$SUMMARY_DIR/preview.svg"
+    fi
+    printf '</svg>\n' >> "$SUMMARY_DIR/preview.svg"
+    mt_render_png_file "$SUMMARY_DIR/preview.svg" "$SUMMARY_DIR/preview.png" 1200 630 1
 }
 
 step_build_pages() {
@@ -3516,12 +3593,11 @@ render_and_upload_summary() {
     [[ "$SERVERGRADE_PUBLISH" == "1" && -n "$SERVERGRADE_PUBLISH_URL" ]] && publish=1
     print_separator "Формирую отчёт"
     gather_system_facts
-    if (( ! publish )); then
-        spin_run "Устанавливаю зависимости для картинки" step_render_deps || true
-    fi
+    spin_run "Проверяю зависимости для изображений" step_render_deps || true
     if ! build_report_pages; then
         echo -e "  ${YELLOW}Не удалось собрать изображения.${NC}"
     fi
+    spin_run "Готовлю превью отчёта" step_build_preview_png || true
     if (( ! publish )); then
         echo -e "  Публикация отключена. Локальные результаты: ${BOLD}${SUMMARY_DIR}${NC}"
         return 0

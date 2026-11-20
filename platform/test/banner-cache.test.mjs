@@ -8,6 +8,16 @@ const origin = "https://servergrade.test";
 const sessionSecret = "b".repeat(64);
 const png = Buffer.from("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aL9sAAAAASUVORK5CYII=", "base64");
 const webp = Buffer.from("UklGRiIAAABXRUJQVlA4IBYAAAAwAQCdASoBAAEAAUAmJaQAA3AA/v89WAAAAA==", "base64");
+function box(type, content) {
+  const header = Buffer.alloc(8);
+  header.writeUInt32BE(content.length + 8);
+  header.write(type, 4, "ascii");
+  return Buffer.concat([header, content]);
+}
+const mp4 = Buffer.concat([
+  box("ftyp", Buffer.concat([Buffer.from("isom"), Buffer.alloc(4), Buffer.from("isommp42")])),
+  box("mdat", Buffer.from(Array.from({ length: 128 }, (_, index) => index))),
+]);
 
 // SQLite executes the production SQL while this adapter exposes D1's response
 // shape. Keeping the schema real catches migrations and stale-row joins that a
@@ -127,17 +137,22 @@ async function fixture(suite) {
     await drain();
     return response;
   };
-  const change = async (data) => {
+  const submit = async (data) => {
     const request = new Request(origin + "/api/admin/banners", {
       method: "POST",
       headers: { "content-type": "application/json", origin, cookie: sessionCookie() },
       body: JSON.stringify({ action: "update", id: 1, ...data }),
     });
     const response = await admin.handleAdminRequest(request, env);
-    assert.ok(response.ok, await response.text());
     await drain();
+    return response;
   };
-  return { env, DB, cache, image, change };
+  const change = async (data) => {
+    const response = await submit(data);
+    assert.ok(response.ok, await response.clone().text());
+    return response;
+  };
+  return { env, DB, cache, image, change, submit };
 }
 
 function expectedVersion(bytes) {
@@ -263,4 +278,109 @@ test("admin preview remains private and uncached even when the banner is disable
   const unauthorized = await admin.handleAdminRequest(new Request(request.url), env);
   assert.equal(unauthorized.status, 401);
   assert.match(unauthorized.headers.get("cache-control"), /no-store/);
+});
+
+test("MP4 create stores MIME and revision atomically, and rejects invalid brands or oversized files", async (suite) => {
+  const { env, DB, change, submit } = await fixture(suite);
+  const created = await change({ action: "create", title: "Video", target_url: "https://example.com", image_data: "data:video/mp4;base64," + mp4.toString("base64") });
+  assert.equal(created.status, 201);
+  const { id } = await created.json();
+  const stored = DB.sqlite.prepare("SELECT b.image_mime,i.version FROM admin_banners b JOIN admin_banner_images i ON i.banner_id=b.id WHERE b.id=?").get(id);
+  assert.equal(stored.image_mime, "video/mp4");
+  assert.equal(stored.version, expectedVersion(mp4));
+  assert.equal((await admin.publicBanners(env)).find((banner) => banner.id === id).image_url, `/banners/${id}?v=${expectedVersion(mp4)}`);
+  const avif = Buffer.from(mp4);
+  avif.write("avif", 8, "ascii");
+  const truncated = Buffer.from(mp4);
+  truncated.writeUInt32BE(mp4.length + 100, 0);
+  for (const bytes of [Buffer.from("<html>not a movie</html>"), avif, truncated, png, Buffer.alloc(750 * 1024 + 1)]) {
+    const response = await submit({ image_data: "data:video/mp4;base64," + bytes.toString("base64") });
+    assert.equal(response.status, 400);
+    assert.equal((await response.json()).error, "invalid_image");
+  }
+});
+
+test("MP4 cold range primes only a full 200 cache entry; subsequent prefix/open/suffix ranges reuse it", async (suite) => {
+  const { env, DB, cache, image, change } = await fixture(suite);
+  await change({ image_data: "data:video/mp4;base64," + mp4.toString("base64") });
+  const url = await bannerUrl(env);
+  const first = await image(url, { headers: { range: "bytes=0-1" } });
+  assert.equal(first.status, 206);
+  assert.equal(first.headers.get("content-type"), "video/mp4");
+  assert.equal(first.headers.get("accept-ranges"), "bytes");
+  assert.equal(first.headers.get("content-range"), `bytes 0-1/${mp4.length}`);
+  assert.equal(first.headers.get("content-length"), "2");
+  assert.deepEqual(Buffer.from(await first.arrayBuffer()), mp4.subarray(0, 2));
+  assert.equal(cache.puts.length, 1);
+  assert.deepEqual(Buffer.from(await [...cache.entries.values()][0].clone().arrayBuffer()), mp4);
+  const reads = DB.imageReads;
+  for (const [range, start, end] of [["bytes=20-", 20, mp4.length - 1], ["bytes=-12", mp4.length - 12, mp4.length - 1], ["bytes=7-31", 7, 31], ["bytes=0-99999999999999999999", 0, mp4.length - 1], ["bytes=-99999999999999999999", 0, mp4.length - 1]]) {
+    const response = await image(url, { headers: { range } });
+    assert.equal(response.status, 206, range);
+    assert.equal(response.headers.get("content-range"), `bytes ${start}-${end}/${mp4.length}`);
+    assert.deepEqual(Buffer.from(await response.arrayBuffer()), mp4.subarray(start, end + 1), range);
+  }
+  assert.equal(DB.imageReads, reads, "Ranges on an edge hit must not load database base64");
+  assert.equal(cache.puts.length, 1, "Partial responses must not replace the full cached representation");
+  const whole = await image(url);
+  assert.equal(whole.status, 200);
+  assert.deepEqual(Buffer.from(await whole.arrayBuffer()), mp4);
+});
+
+test("MP4 HEAD ignores Range and returns full metadata; invalid ranges are uncached 416", async (suite) => {
+  const { env, cache, image, change } = await fixture(suite);
+  await change({ image_data: "data:video/mp4;base64," + mp4.toString("base64") });
+  const url = await bannerUrl(env);
+  const head = await image(url, { method: "HEAD", headers: { range: "bytes=0-1" } });
+  assert.equal(head.status, 200);
+  assert.equal(head.headers.get("content-type"), "video/mp4");
+  assert.equal(Number(head.headers.get("content-length")), mp4.length);
+  assert.equal((await head.arrayBuffer()).byteLength, 0);
+  assert.equal(cache.puts.length, 0);
+  await image(url);
+  const puts = cache.puts.length;
+  for (const range of ["bytes=999999-", "bytes=9-8", "bytes=-0", "bytes=-", "bytes=0-1,3-4", "items=0-1", "bytes=abc", "bytes=1e3-", "bytes=" + "1".repeat(170) + "-"]) {
+    const response = await image(url, { headers: { range } });
+    assert.equal(response.status, 416, range);
+    assert.equal(response.headers.get("content-range"), `bytes */${mp4.length}`);
+    assert.match(response.headers.get("cache-control"), /no-store/);
+    assert.equal((await response.arrayBuffer()).byteLength, 0);
+  }
+  assert.equal(cache.puts.length, puts);
+});
+
+test("If-Range uses strong ETags and stale versions remain forbidden before range cache access", async (suite) => {
+  const { env, cache, image, change } = await fixture(suite);
+  await change({ image_data: "data:video/mp4;base64," + mp4.toString("base64") });
+  const url = await bannerUrl(env), etag = '"' + expectedVersion(mp4) + '"';
+  const partial = await image(url, { headers: { range: "bytes=0-1", "if-range": etag } });
+  assert.equal(partial.status, 206);
+  for (const validator of ['"different"', "W/" + etag, "Wed, 21 Oct 2015 07:28:00 GMT"]) {
+    const response = await image(url, { headers: { range: "bytes=0-1", "if-range": validator } });
+    assert.equal(response.status, 200, validator);
+    assert.deepEqual(Buffer.from(await response.arrayBuffer()), mp4);
+  }
+  assert.equal((await image(url, { headers: { range: "bytes=0-1", "if-none-match": etag } })).status, 304);
+  await change({ image_data: "data:image/png;base64," + png.toString("base64") });
+  const matches = cache.matches.length;
+  const stale = await image(url, { headers: { range: "bytes=0-1", "if-range": etag } });
+  assert.equal(stale.status, 404);
+  assert.equal(cache.matches.length, matches);
+});
+
+test("disabled MP4 stays unavailable publicly while authorized preview supports private ranges", async (suite) => {
+  const { env, cache, image, change } = await fixture(suite);
+  await change({ image_data: "data:video/mp4;base64," + mp4.toString("base64") });
+  const url = await bannerUrl(env);
+  await image(url);
+  await change({ enabled: false });
+  const matches = cache.matches.length, puts = cache.puts.length;
+  assert.equal((await image(url, { headers: { range: "bytes=0-1" } })).status, 404);
+  assert.equal(cache.matches.length, matches);
+  const preview = await admin.handleAdminRequest(new Request(origin + "/api/admin/banners/1/image", { headers: { cookie: sessionCookie(), range: "bytes=-8" } }), env);
+  assert.equal(preview.status, 206);
+  assert.equal(preview.headers.get("content-type"), "video/mp4");
+  assert.match(preview.headers.get("cache-control"), /private, no-store/);
+  assert.deepEqual(Buffer.from(await preview.arrayBuffer()), mp4.subarray(-8));
+  assert.equal(cache.puts.length, puts);
 });
