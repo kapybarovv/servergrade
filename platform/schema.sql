@@ -139,6 +139,12 @@ CREATE TABLE IF NOT EXISTS admin_banners (
   created_at TEXT NOT NULL
 );
 
+-- Version metadata keeps public image URLs fresh without loading their base64.
+CREATE TABLE IF NOT EXISTS admin_banner_images (
+  banner_id INTEGER PRIMARY KEY REFERENCES admin_banners(id) ON DELETE CASCADE,
+  version TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS result_pins (
   result_id TEXT PRIMARY KEY,
   pinned_at TEXT NOT NULL,

@@ -3,14 +3,68 @@ const SESSION_SECONDS = 12 * 60 * 60;
 const MAX_IMAGE_BYTES = 750 * 1024;
 const encoder = new TextEncoder();
 const bytesHex = (bytes) => Array.from(bytes, (byte) => byte.toString(16).padStart(2, "0")).join("");
+const schemaPromises = new WeakMap();
+const BANNER_COLUMNS = "b.id,b.title,b.image_url,b.image_mime,b.target_url,b.enabled,b.sort_order,b.created_at,CASE WHEN b.image_data<>'' THEN 1 ELSE 0 END has_image,i.version";
+const validImageVersion = (value) => /^[a-f0-9]{64}$/.test(value || "");
 
 export async function ensureAdminSchema(env) {
-  await env.DB.batch([
+  let promise = schemaPromises.get(env.DB);
+  if (promise) return promise;
+  promise = env.DB.batch([
     env.DB.prepare("CREATE TABLE IF NOT EXISTS admin_banners (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT NOT NULL, image_url TEXT NOT NULL DEFAULT '', image_mime TEXT NOT NULL DEFAULT '', image_data TEXT NOT NULL DEFAULT '', target_url TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0,1)), sort_order INTEGER NOT NULL DEFAULT 0, created_at TEXT NOT NULL)"),
+    env.DB.prepare("CREATE TABLE IF NOT EXISTS admin_banner_images (banner_id INTEGER PRIMARY KEY REFERENCES admin_banners(id) ON DELETE CASCADE, version TEXT NOT NULL)"),
     env.DB.prepare("CREATE TABLE IF NOT EXISTS result_pins (result_id TEXT PRIMARY KEY, pinned_at TEXT NOT NULL, FOREIGN KEY(result_id) REFERENCES results(id) ON DELETE CASCADE)"),
     env.DB.prepare("CREATE TABLE IF NOT EXISTS admin_login_attempts (key TEXT PRIMARY KEY, failures INTEGER NOT NULL, expires_at TEXT NOT NULL)"),
     env.DB.prepare("CREATE INDEX IF NOT EXISTS admin_login_attempts_expires_at ON admin_login_attempts(expires_at)"),
-  ]);
+  ]).then(() => undefined);
+  schemaPromises.set(env.DB, promise);
+  try {
+    await promise;
+  } catch (failure) {
+    if (schemaPromises.get(env.DB) === promise) schemaPromises.delete(env.DB);
+    throw failure;
+  }
+}
+
+function imageBytes(data) {
+  return Uint8Array.from(atob(data), (character) => character.charCodeAt(0));
+}
+
+async function imageVersion(data) {
+  return bytesHex(new Uint8Array(await crypto.subtle.digest("SHA-256", imageBytes(data))));
+}
+
+async function publicBanner(env, id) {
+  return env.DB.prepare(`SELECT ${BANNER_COLUMNS} FROM admin_banners b LEFT JOIN admin_banner_images i ON i.banner_id=b.id WHERE b.id=? AND b.enabled=1`).bind(id).first();
+}
+
+async function backfillImageVersion(env, id) {
+  // A concurrent upload may replace the image while it is being hashed. The
+  // guarded INSERT only publishes a revision for the exact bytes we read.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const current = await publicBanner(env, id);
+    if (!current || !current.has_image || validImageVersion(current.version)) return current;
+    const image = await env.DB.prepare("SELECT image_mime,image_data FROM admin_banners WHERE id=? AND enabled=1 AND image_data<>''").bind(id).first();
+    if (!image) return null;
+    const version = await imageVersion(image.image_data);
+    await env.DB.prepare("INSERT INTO admin_banner_images(banner_id,version) SELECT id,? FROM admin_banners WHERE id=? AND image_data=? AND image_mime=? ON CONFLICT(banner_id) DO UPDATE SET version=excluded.version")
+      .bind(version, id, image.image_data, image.image_mime).run();
+  }
+  const current = await publicBanner(env, id);
+  return current && (!current.has_image || validImageVersion(current.version)) ? current : null;
+}
+
+export async function publicBanners(env) {
+  await ensureAdminSchema(env);
+  const rows = await env.DB.prepare(`SELECT ${BANNER_COLUMNS} FROM admin_banners b LEFT JOIN admin_banner_images i ON i.banner_id=b.id WHERE b.enabled=1 ORDER BY b.sort_order,b.id`).all();
+  const banners = await Promise.all((rows.results || []).map(async (row) => {
+    const current = row.has_image && !validImageVersion(row.version) ? await backfillImageVersion(env, row.id) : row;
+    if (!current) return null;
+    const { has_image, version, ...banner } = current;
+    if (has_image) banner.image_url = `/banners/${banner.id}?v=${version}`;
+    return banner;
+  }));
+  return banners.filter(Boolean);
 }
 
 function configured(env) {
@@ -116,11 +170,68 @@ async function imageResponse(request, banner, privateImage = false) {
   return new Response(request.method === "HEAD" ? null : bytes, { headers });
 }
 
-export async function bannerImageResponse(request, env) {
-  const match = new URL(request.url).pathname.match(/^\/banners\/(\d+)$/);
+function missingBanner(request) {
+  return new Response(request.method === "HEAD" ? null : "Not found", { status: 404, headers: { "cache-control": "no-store" } });
+}
+
+function imageEtagMatches(request, etag) {
+  return (request.headers.get("if-none-match") || "").split(",").some((value) => {
+    const tag = value.trim();
+    return tag === "*" || tag.replace(/^W\//, "") === etag;
+  });
+}
+
+export async function bannerImageResponse(request, env, ctx) {
+  const url = new URL(request.url);
+  const match = url.pathname.match(/^\/banners\/(\d+)$/);
   if (!match || !["GET", "HEAD"].includes(request.method)) return null;
-  const banner = await env.DB.prepare("SELECT image_mime,image_data FROM admin_banners WHERE id=? AND enabled=1 AND image_data<>''").bind(match[1]).first();
-  return imageResponse(request, banner);
+  const id = Number(match[1]);
+  if (!Number.isSafeInteger(id) || id < 1) return missingBanner(request);
+  await ensureAdminSchema(env);
+  let banner = await publicBanner(env, id);
+  if (banner?.has_image && !validImageVersion(banner.version)) banner = await backfillImageVersion(env, id);
+  if (!banner?.has_image || !validImageVersion(banner.version)) return missingBanner(request);
+
+  const path = `/banners/${id}?v=${banner.version}`;
+  if (!url.searchParams.has("v")) {
+    return new Response(null, { status: 307, headers: { location: new URL(path, url.origin).href, "cache-control": "no-store" } });
+  }
+  if (url.searchParams.get("v") !== banner.version) return missingBanner(request);
+  const headers = {
+    "content-type": banner.image_mime,
+    "cache-control": "public, max-age=31536000, immutable",
+    "x-content-type-options": "nosniff",
+    "content-security-policy": "default-src 'none'; sandbox",
+    etag: '"' + banner.version + '"',
+  };
+  if (imageEtagMatches(request, headers.etag)) return new Response(null, { status: 304, headers });
+
+  // Check current visibility/revision before looking in the edge cache. A
+  // cache hit never reads or hashes the potentially large database image.
+  const origin = new URL(env.PUBLIC_ORIGIN || url.origin).origin;
+  const cacheKey = new Request(new URL(path, origin), { method: "GET" });
+  const cache = globalThis.caches?.default;
+  if (cache) {
+    try {
+      const cached = await cache.match(cacheKey);
+      if (cached) return new Response(request.method === "HEAD" ? null : cached.body, { status: cached.status, headers: cached.headers });
+    } catch {
+      // Cache availability must not prevent the image from being served.
+    }
+  }
+  if (request.method === "HEAD") return new Response(null, { headers });
+  const image = await env.DB.prepare("SELECT b.image_mime,b.image_data FROM admin_banners b JOIN admin_banner_images i ON i.banner_id=b.id WHERE b.id=? AND b.enabled=1 AND b.image_data<>'' AND i.version=?")
+    .bind(id, banner.version).first();
+  if (!image) return missingBanner(request);
+  const bytes = imageBytes(image.image_data);
+  headers["content-length"] = String(bytes.byteLength);
+  const response = new Response(bytes, { headers });
+  if (cache) {
+    const put = cache.put(cacheKey, response.clone()).catch(() => {});
+    if (ctx?.waitUntil) ctx.waitUntil(put);
+    else await put;
+  }
+  return response;
 }
 
 async function login(request, env, data) {
@@ -165,7 +276,10 @@ async function changeBanner(env, data) {
     if (!existing) return error("banner_not_found", "Баннер не найден.", 404);
   }
   if (action === "delete") {
-    await env.DB.prepare("DELETE FROM admin_banners WHERE id=?").bind(existing.id).run();
+    await env.DB.batch([
+      env.DB.prepare("DELETE FROM admin_banner_images WHERE banner_id=?").bind(existing.id),
+      env.DB.prepare("DELETE FROM admin_banners WHERE id=?").bind(existing.id),
+    ]);
     return json({ ok: true });
   }
   const title = typeof data.title === "string" ? data.title.trim() : existing?.title || "";
@@ -173,6 +287,7 @@ async function changeBanner(env, data) {
   let imageUrl = existing?.image_url || "";
   let imageMime = existing?.image_mime || "";
   let imageData = existing?.image_data || "";
+  const imageProvided = Boolean(data.image_data || data.image_url);
   if (data.image_data) {
     const image = uploadedImage(data.image_data);
     if (!image) return error("invalid_image", "Выберите PNG, JPEG или WebP размером до 750 КБ.", 400);
@@ -190,12 +305,28 @@ async function changeBanner(env, data) {
     return error("invalid_banner", "Укажите название до 120 символов, HTTPS-ссылки и целый порядок сортировки.", 400);
   }
   if (action === "create") {
-    const inserted = await env.DB.prepare("INSERT INTO admin_banners(title,image_url,image_mime,image_data,target_url,enabled,sort_order,created_at) VALUES(?,?,?,?,?,?,?,datetime('now'))")
-      .bind(title, imageUrl, imageMime, imageData, targetUrl, enabled ? 1 : 0, sortOrder).run();
-    return json({ ok: true, id: inserted.meta.last_row_id }, 201);
+    const statements = [env.DB.prepare("INSERT INTO admin_banners(title,image_url,image_mime,image_data,target_url,enabled,sort_order,created_at) VALUES(?,?,?,?,?,?,?,datetime('now'))")
+      .bind(title, imageUrl, imageMime, imageData, targetUrl, enabled ? 1 : 0, sortOrder)];
+    if (imageData) statements.push(env.DB.prepare("INSERT INTO admin_banner_images(banner_id,version) VALUES(last_insert_rowid(),?)").bind(await imageVersion(imageData)));
+    const inserted = await env.DB.batch(statements);
+    return json({ ok: true, id: inserted[0].meta.last_row_id }, 201);
   }
-  await env.DB.prepare("UPDATE admin_banners SET title=?,image_url=?,image_mime=?,image_data=?,target_url=?,enabled=?,sort_order=? WHERE id=?")
-    .bind(title, imageUrl, imageMime, imageData, targetUrl, enabled ? 1 : 0, sortOrder, existing.id).run();
+  if (imageProvided) {
+    const statements = [env.DB.prepare("UPDATE admin_banners SET title=?,image_url=?,image_mime=?,image_data=?,target_url=?,enabled=?,sort_order=? WHERE id=?")
+      .bind(title, imageUrl, imageMime, imageData, targetUrl, enabled ? 1 : 0, sortOrder, existing.id)];
+    if (imageData) {
+      statements.push(env.DB.prepare("INSERT INTO admin_banner_images(banner_id,version) SELECT id,? FROM admin_banners WHERE id=? ON CONFLICT(banner_id) DO UPDATE SET version=excluded.version")
+        .bind(await imageVersion(imageData), existing.id));
+    } else {
+      statements.push(env.DB.prepare("DELETE FROM admin_banner_images WHERE banner_id=?").bind(existing.id));
+    }
+    await env.DB.batch(statements);
+  } else {
+    // A title/order/link edit must not restore an image from an older admin
+    // form while another request has just uploaded a replacement.
+    await env.DB.prepare("UPDATE admin_banners SET title=?,target_url=?,enabled=?,sort_order=? WHERE id=?")
+      .bind(title, targetUrl, enabled ? 1 : 0, sortOrder, existing.id).run();
+  }
   return json({ ok: true, id: existing.id });
 }
 

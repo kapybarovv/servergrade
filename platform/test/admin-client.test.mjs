@@ -204,4 +204,40 @@ test("Wrangler-bundled admin pages register working browser handlers", async (su
     assert.equal(page.element("[data-admin-content]").hidden, false);
     assert.equal(page.element("[data-loading]").hidden, true);
   });
+
+  await suite.test("home preloads the current first banner and revalidates its HTML", async () => {
+    const banners = [1, 2].map((id) => ({
+      id, title: "Synthetic banner " + id, image_url: "", image_mime: "image/webp",
+      target_url: "https://example.test/", enabled: 1, sort_order: id,
+      has_image: 1, version: String(id).repeat(64),
+    }));
+    const homeEnv = environment();
+    homeEnv.DB.prepare = (sql) => ({
+      bind() { return this; },
+      async run() { return { meta: { changes: 0 } }; },
+      async first() { return {}; },
+      async all() { return { results: sql.includes("FROM admin_banners b") ? banners : [] }; },
+    });
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => Response.json({ stargazers_count: 20 });
+    try {
+      const response = await worker.fetch(new Request(origin + "/"), homeEnv);
+      assert.equal(response.status, 200);
+      assert.match(response.headers.get("cache-control"), /no-cache/);
+      const html = await response.text();
+      const firstUrl = "/banners/1?v=" + "1".repeat(64);
+      const secondUrl = "/banners/2?v=" + "2".repeat(64);
+      assert.ok(html.includes('<link rel="preload" as="image" href="' + firstUrl + '" fetchpriority="high">'));
+      const images = [...html.matchAll(/<img src="([^"]+)"[^>]*>/g)].map((match) => match[0]);
+      const first = images.find((tag) => tag.includes(firstUrl));
+      const second = images.find((tag) => tag.includes(secondUrl));
+      assert.match(first, /loading="eager"/);
+      assert.match(first, /fetchpriority="high"/);
+      assert.match(second, /loading="lazy"/);
+      assert.doesNotMatch(second, /fetchpriority="high"/);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
 });

@@ -8,6 +8,7 @@
     "dev": "wrangler dev",
     "predeploy": "npm run build:css",
     "deploy": "wrangler deploy",
+    "test:banner-cache": "node --test ./test/banner-cache.test.mjs",
     "test:admin-client": "node --test ./test/admin-client.test.mjs",
     "db:local": "wrangler d1 execute servergrade --local --file=./schema.sql",
     "db:remote": "wrangler d1 execute servergrade --remote --file=./schema.sql"
