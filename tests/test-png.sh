@@ -11,6 +11,13 @@ SUMMARY_DIR="$TEST_DATA"
 printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aL9sAAAAASUVORK5CYII=' | base64 --decode > "$TEST_DATA/pixel.png" 2>/dev/null ||
     printf '%s' 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aL9sAAAAASUVORK5CYII=' | base64 -D > "$TEST_DATA/pixel.png" || exit 1
 
+# Keep the geometry tests deterministic while exercising the real renderer argv.
+timeout() {
+    [[ "$1" == -k && "$2" == 1 && "$3" =~ ^[1-4]$ ]] || fail 'renderer called without a deadline'
+    shift 3
+    "$@"
+}
+
 # The first large raster must be retried at a smaller height as well as width.
 rsvg-convert() {
     printf '%s %s\n' "$1" "$2" >> "$TEST_DATA/render-args"
@@ -52,16 +59,46 @@ upload_result_assets || fail 'upload failed'
 [[ $(sed -n '2p' "$TEST_DATA/uploads") != *'preview_png@'* ]] || fail 'social card uploaded twice'
 [[ $(cat "$SUMMARY_DIR/asset-1.png.base64") == $(base64 < "$TEST_DATA/report.png" | tr -d '\r\n') ]] || fail 'PNG base64 changed'
 
-# Terminal publication also prepares images, then publishes the completed report.
-gather_system_facts() { :; }
+# An unavailable or hung converter can never prevent using its SVG source.
+unset -f timeout rsvg-convert
+if command -v timeout >/dev/null; then
+    mkdir "$TEST_DATA/bin" || exit 1
+    cat > "$TEST_DATA/bin/rsvg-convert" <<'SH'
+#!/bin/sh
+# Model a renderer which ignores graceful termination.
+trap '' TERM
+exec sleep 60
+SH
+    chmod +x "$TEST_DATA/bin/rsvg-convert"
+    start=$SECONDS
+    if PATH="$TEST_DATA/bin:$PATH" MT_PNG_DEADLINE=$((SECONDS + 1)) \
+        mt_render_png_file "$TEST_DATA/report.svg" "$TEST_DATA/report.png"; then
+        fail 'a hung renderer reported success'
+    fi
+    (( SECONDS - start < 5 )) || fail 'a hung renderer exceeded its time budget'
+    [[ -s "$TEST_DATA/report.svg" && -s "$TEST_DATA/report.png" ]] || fail 'a raster timeout destroyed a completed file'
+fi
+
+# The report link is available before optional rendering and image uploads.
+# Absence of a renderer still publishes and uploads the SVG.
+gather_system_facts() { SYS_COUNTRY=NL; }
+mt_apple_flag_b64() { printf 'flag\n' >> "$TEST_DATA/steps"; }
 print_separator() { :; }
-step_render_deps() { printf 'dependencies\n' >> "$TEST_DATA/steps"; }
+install_package() { fail 'report preparation invoked a package manager'; }
 build_report_pages() { printf 'pages\n' >> "$TEST_DATA/steps"; }
-step_build_preview_png() { printf 'preview\n' >> "$TEST_DATA/steps"; }
+step_build_report_pngs() { printf 'png:%s\n' "$1" >> "$TEST_DATA/steps"; return 1; }
 publish_result_page() { printf 'publish\n' >> "$TEST_DATA/steps"; }
 upload_result_assets() { printf 'assets\n' >> "$TEST_DATA/steps"; }
-print_report_link() { :; }
+print_report_link() { printf 'link\n' >> "$TEST_DATA/steps"; }
+mt_has_png_renderer() { [[ "$TEST_RENDERER" == 1 ]]; }
 spin_run() { shift; "$@"; }
-render_and_upload_summary || fail 'terminal publication failed'
-[[ $(cat "$TEST_DATA/steps") == $'dependencies\npages\npreview\npublish\nassets' ]] || fail 'publication skipped or reordered raster preparation'
-printf 'PASS: PNG rendering bounds, upload fields and terminal publication\n'
+
+TEST_RENDERER=0 render_and_upload_summary || fail 'SVG-only publication failed'
+[[ $(cat "$TEST_DATA/steps") == $'flag\npages\npublish\nlink\nassets' ]] || fail 'publication depends on PNG preparation'
+: > "$TEST_DATA/steps"
+TEST_RENDERER=1 render_and_upload_summary || fail 'raster failure blocked the report'
+[[ $(cat "$TEST_DATA/steps") == $'flag\npages\npublish\nlink\npng:1\nassets' ]] || fail 'PNG attempt delayed the link or blocked SVG upload'
+: > "$TEST_DATA/steps"
+SERVERGRADE_PUBLISH=0 TEST_RENDERER=1 render_and_upload_summary >/dev/null || fail 'local report failed'
+[[ $(cat "$TEST_DATA/steps") == $'flag\npages\npng:0' ]] || fail 'local mode attempted to publish or failed to try a local raster'
+printf 'PASS: raster bounds, renderer timeout, PNG upload fields and SVG-first publication\n'

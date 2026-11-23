@@ -32,7 +32,7 @@ ensure_utf8_locale
 #  ServerGrade — интерактивная диагностика сервера
 # ============================================================
 
-SCRIPT_VERSION="1.6.0"
+SCRIPT_VERSION="1.6.1"
 REPO_URL="https://raw.githubusercontent.com/kapybarovv/servergrade/main/servergrade.sh"
 
 # Цвета
@@ -1649,104 +1649,6 @@ upload_result_assets() {
     (( pos > 0 && failed == 0 ))
 }
 
-# Гарантирует наличие рендерера SVG->PNG (rsvg-convert, иначе ImageMagick).
-ensure_rsvg() {
-    command -v rsvg-convert &>/dev/null && return 0
-
-    local pm
-    pm=$(detect_pkg_manager)
-    case "$pm" in
-        apt)     check_and_install rsvg-convert librsvg2-bin ;;
-        dnf|yum) check_and_install rsvg-convert librsvg2-tools ;;
-        apk)     check_and_install rsvg-convert rsvg-convert ;;
-        pacman)  check_and_install rsvg-convert librsvg ;;
-    esac
-    command -v rsvg-convert &>/dev/null && return 0
-
-    # EPEL для RHEL-семейства
-    if [[ "$pm" == "yum" || "$pm" == "dnf" ]]; then
-        $pm install -y epel-release >/dev/null 2>&1
-        check_and_install rsvg-convert librsvg2-tools
-        command -v rsvg-convert &>/dev/null && return 0
-    fi
-
-    # Фолбэк: ImageMagick
-    echo -e "${YELLOW}rsvg-convert недоступен, пробую ImageMagick...${NC}"
-    case "$pm" in
-        apt)     check_and_install convert imagemagick ;;
-        dnf|yum) check_and_install convert ImageMagick ;;
-        apk)     check_and_install convert imagemagick ;;
-        pacman)  check_and_install magick imagemagick ;;
-    esac
-    command -v rsvg-convert &>/dev/null && return 0
-    command -v convert      &>/dev/null && return 0
-    command -v magick       &>/dev/null && return 0
-    return 1
-}
-
-# Качает шрифт и оставляет файл, только если это действительно TrueType
-# (магия 00 01 00 00): CDN на ошибке отдаёт HTML со статусом 200, а битый файл
-# в fontconfig ломает подбор молча — в картинке просто поедут метрики.
-mt_fetch_ttf() {
-    local url="$1" dst="$2"
-    if command -v curl &>/dev/null; then
-        curl -fsSL --max-time 30 "$url" -o "$dst" 2>/dev/null
-    else
-        wget -qO "$dst" "$url" 2>/dev/null
-    fi
-    [[ -s "$dst" ]] && [[ "$(head -c4 "$dst" 2>/dev/null | od -An -tx1 | tr -d ' \n')" == "00010000" ]] && return 0
-    rm -f "$dst"; return 1
-}
-
-# Каталог для шрифта: системный, если пускают, иначе пользовательский —
-# fontconfig подхватит оба.
-mt_font_dir() {
-    local d="/usr/share/fonts/truetype/$1"
-    mkdir -p "$d" 2>/dev/null && { printf '%s' "$d"; return 0; }
-    d="$HOME/.local/share/fonts/$1"
-    mkdir -p "$d" 2>/dev/null && printf '%s' "$d"
-}
-
-# Best-effort: ставит фирменную пару биллинга. Montserrat используется для
-# заголовков, Manrope - для интерфейса и значений. librsvg игнорирует @font-face,
-# поэтому оба шрифта должны попасть в fontconfig до рендера.
-ensure_fonts() {
-    command -v fc-list &>/dev/null || install_package fontconfig >/dev/null 2>&1
-
-    local got_montserrat=0
-    if fc-list 2>/dev/null | grep -qi 'Montserrat'; then
-        got_montserrat=1
-    else
-        echo -e "${YELLOW}Загружаю Montserrat для сводки...${NC}"
-        local hdir; hdir=$(mt_font_dir montserrat)
-        mt_fetch_ttf "https://raw.githubusercontent.com/google/fonts/main/ofl/montserrat/Montserrat%5Bwght%5D.ttf" \
-            "$hdir/Montserrat-Variable.ttf" && got_montserrat=1
-        [[ $got_montserrat -eq 1 ]] || echo -e "${YELLOW}Montserrat недоступен - использую запасной шрифт.${NC}"
-    fi
-
-    if ! fc-list 2>/dev/null | grep -qi 'Manrope'; then
-        local udir; udir=$(mt_font_dir manrope)
-        mt_fetch_ttf "https://raw.githubusercontent.com/google/fonts/main/ofl/manrope/Manrope%5Bwght%5D.ttf" \
-            "$udir/Manrope-Variable.ttf"
-    fi
-
-    # Запасные шрифты ставим только если Montserrat не получен и Roboto ещё нет.
-    if [[ $got_montserrat -eq 0 ]] && ! fc-list 2>/dev/null | grep -qi 'roboto'; then
-        local pm; pm=$(detect_pkg_manager)
-        case "$pm" in
-            apt)
-                DEBIAN_FRONTEND=noninteractive apt-get install -y -qq fonts-roboto >/dev/null 2>&1 \
-                    || DEBIAN_FRONTEND=noninteractive apt-get install -y -qq fonts-roboto-unhinted >/dev/null 2>&1
-                DEBIAN_FRONTEND=noninteractive apt-get install -y -qq fonts-noto-core fonts-dejavu-core >/dev/null 2>&1 ;;
-            dnf|yum) $pm install -y -q google-roboto-fonts google-noto-sans-fonts dejavu-sans-fonts >/dev/null 2>&1 ;;
-            apk)     apk add --quiet font-roboto font-noto font-dejavu >/dev/null 2>&1 ;;
-            pacman)  pacman -S --noconfirm --quiet ttf-roboto noto-fonts ttf-dejavu >/dev/null 2>&1 ;;
-        esac
-    fi
-    command -v fc-cache &>/dev/null && fc-cache -f >/dev/null 2>&1
-    return 0
-}
-
 # Собирает характеристики сервера в SYS_* (надёжно, не парсит вывод тестов).
 gather_system_facts() {
     SYS_OS=$(grep -E '^PRETTY_NAME=' /etc/os-release 2>/dev/null | cut -d= -f2- | tr -d '"')
@@ -2584,7 +2486,7 @@ sv_mchip() {
     local lw vw cw extra=0 flag_b64=""
     lw=$(mc_lw "$l"); vw=$(mc_vw "$v")
     if [[ "$l" == "Страна" || "$l" == Консенсус* ]]; then
-        extra=26; flag_b64=$(mt_apple_flag_b64 "$SYS_COUNTRY")
+        extra=26; flag_b64="${MT_REPORT_FLAG_B64:-}"
     fi
     vw=$((vw+extra)); cw=$((lw+vw))
     local bg="$C_SCH" lc="$C_TXT2" vc="$C_TXT" dv="$C_LINE2" so="" icon
@@ -2964,9 +2866,9 @@ mt_apple_flag_b64() {
     if [[ ! -s "$file" ]]; then
         url="https://raw.githubusercontent.com/iamcal/emoji-data/master/img-apple-64/$name"
         if command -v curl &>/dev/null; then
-            curl -fsSL --max-time 15 "$url" -o "$file" 2>/dev/null || rm -f "$file"
+            curl -fsSL --connect-timeout 2 --max-time 4 "$url" -o "$file" 2>/dev/null || rm -f "$file"
         elif command -v wget &>/dev/null; then
-            wget -q -T 15 -O "$file" "$url" 2>/dev/null || rm -f "$file"
+            wget -q -t 1 -T 4 -O "$file" "$url" 2>/dev/null || rm -f "$file"
         fi
     fi
     [[ -s "$file" ]] && base64 < "$file" | tr -d '\r\n'
@@ -2981,7 +2883,7 @@ sv_card_server() {
     [[ -n "$ip6_disp" ]] && SF+=( "IPv6|$ip6_disp" )
     local country_name flag_b64
     country_name=$(mt_country_name "$SYS_COUNTRY")
-    flag_b64=$(mt_apple_flag_b64 "$SYS_COUNTRY")
+    flag_b64="${MT_REPORT_FLAG_B64:-}"
     SF+=( "ГЕО|$country_name / $SYS_CITY" "ASN|$SYS_ASN" "ВЕНДОР|$SYS_SERVER_INFO" \
         "ПАМЯТЬ|$SYS_RAM_TYPE" "НАКОПИТЕЛЬ|$SYS_DISK_TYPE · $SYS_DISK_MODEL" "BBR / QDISC|$SYS_CC / $SYS_QDISC" \
         "UPTIME|$SYS_UPTIME" "LOAD AVG|$SYS_LOAD" )
@@ -3339,32 +3241,10 @@ spin_run() {
 # Результаты передаём файлами: шаг уходит в фоновый процесс, и переменные,
 # выставленные внутри него, до родителя не доживут.
 
-step_render_deps() {
-    ensure_rsvg; ensure_fonts
-    # Успех шага — не «apt отработал», а «есть чем рендерить». Иначе строка
-    # рапортовала бы «готово» там, где картинка уже обречена уехать как SVG.
-    command -v rsvg-convert &>/dev/null || command -v convert &>/dev/null || command -v magick &>/dev/null
-}
-
 step_build_svg() {
     build_summary_svg > "$SUMMARY_DIR/summary.svg" || return 1
     [[ -s "$SUMMARY_DIR/summary.svg" ]] || return 1
     printf '%s\n' "$SUMMARY_DIR/summary.svg" > "$SUMMARY_DIR/pages.list"
-}
-
-step_render_png() {
-    local svg="$SUMMARY_DIR/summary.svg" png="$SUMMARY_DIR/summary.png"
-    printf '%s' "$svg" > "$SUMMARY_DIR/out.path"
-    mt_render_png_file "$svg" "$png" || return 1
-    [[ -s "$png" ]] || return 1
-    printf '%s' "$png" > "$SUMMARY_DIR/out.path"
-}
-
-step_upload() {
-    local url
-    url=$(upload_report "$(cat "$SUMMARY_DIR/out.path")") || return 1
-    [[ -n "$url" ]] || return 1
-    printf '%s' "$url" > "$SUMMARY_DIR/url.txt"
 }
 
 # --- шаги альбома (страница на тест) ---------------------------------------
@@ -3386,8 +3266,9 @@ MT_ALBUM_MAX=64
 # геометрию, затем при необходимости уменьшаем ширину, сохраняя пропорции.
 mt_render_png_file() {
     local svg="$1" png="$2" max_width="${3:-1200}" max_height="${4:-4800}" exact="${5:-0}"
-    local svg_width svg_height width height height_cap bytes tmp="${2%.png}.rendering.png"
-    local -a geo
+    local deadline="${MT_PNG_DEADLINE:-$((SECONDS + 4))}"
+    local svg_width svg_height width height height_cap bytes seconds tmp="${2%.png}.rendering.png"
+    local -a geo render
     [[ -s "$svg" ]] || return 1
     read -r svg_width svg_height <<< "$(sed -nE 's/.*viewBox="0 0 ([0-9.]+) ([0-9.]+)".*/\1 \2/p' "$svg" | head -1)"
     [[ "$svg_width" =~ ^[0-9]+([.][0-9]+)?$ && "$svg_height" =~ ^[0-9]+([.][0-9]+)?$ ]] || return 1
@@ -3400,15 +3281,18 @@ mt_render_png_file() {
         if (( height > height_cap )); then geo=( -h "$height_cap" ); else geo=( -w "$width" ); fi
         rm -f "$tmp"
         if command -v rsvg-convert &>/dev/null; then
-            rsvg-convert "${geo[@]}" -o "$tmp" "$svg" 2>/dev/null || continue
+            render=(rsvg-convert "${geo[@]}" -o "$tmp" "$svg")
         elif command -v magick &>/dev/null; then
-            magick -background none "$svg" -resize "${width}x${height_cap}>" "$tmp" 2>/dev/null || continue
+            render=(magick -background none "$svg" -resize "${width}x${height_cap}>" "$tmp")
         elif command -v convert &>/dev/null; then
-            convert -background none "$svg" -resize "${width}x${height_cap}>" "$tmp" 2>/dev/null || continue
+            render=(convert -background none "$svg" -resize "${width}x${height_cap}>" "$tmp")
         else
-            rm -f "$tmp" "$png"
             return 1
         fi
+        seconds=$((deadline - SECONDS))
+        (( seconds > 0 )) || break
+        (( seconds > 4 )) && seconds=4
+        timeout -k 1 "$seconds" "${render[@]}" 2>/dev/null || continue
         [[ -s "$tmp" ]] || continue
         bytes=$(wc -c < "$tmp")
         if (( bytes <= 1800000 )) && [[ "$(head -c8 "$tmp" | od -An -tx1 | tr -d ' \n')" == "89504e470d0a1a0a" ]]; then
@@ -3416,16 +3300,24 @@ mt_render_png_file() {
             return $?
         fi
     done
-    rm -f "$tmp" "$png"
+    rm -f "$tmp"
     return 1
 }
 
-# В манифесте сохраняем SVG, а PNG рядом с ним прикладывается при публикации.
-mt_render_page() {
-    local base="$1"
-    local svg="$base.svg" png="$base.png"
-    mt_render_png_file "$svg" "$png" || true
-    printf '%s\n' "$svg" >> "$SUMMARY_DIR/pages.list"
+mt_has_png_renderer() {
+    command -v timeout &>/dev/null &&
+        { command -v rsvg-convert &>/dev/null || command -v magick &>/dev/null || command -v convert &>/dev/null; }
+}
+
+# Один общий бюджет на превью и все страницы, включая повторы меньшего размера.
+step_build_report_pngs() {
+    local publish="$1" svg generated=1 MT_PNG_DEADLINE=$((SECONDS + 12))
+    if (( publish )) && step_build_preview_png; then generated=0; fi
+    while IFS= read -r svg; do
+        (( SECONDS < MT_PNG_DEADLINE )) || break
+        if mt_render_png_file "$svg" "${svg%.svg}.png"; then generated=0; fi
+    done < "$SUMMARY_DIR/pages.list"
+    return "$generated"
 }
 
 # Отдельная горизонтальная карточка для ссылок в Telegram, Discord и соцсетях.
@@ -3438,7 +3330,7 @@ step_build_preview_png() {
     ram=$(printf '%s' "${SYS_RAM:-—}" | xml_escape)
     disk=$(vcut "${SYS_DISK:-—}" 28 | xml_escape)
     stamp=$(date '+%d.%m.%Y')
-    flag=$(mt_apple_flag_b64 "${SYS_COUNTRY:-}")
+    flag="${MT_REPORT_FLAG_B64:-}"
     [[ -n "$flag" ]] && flag_x=112
     cat > "$SUMMARY_DIR/preview.svg" <<EOF
 <svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="0 0 1200 630" font-family="Manrope, Montserrat, DejaVu Sans, sans-serif">
@@ -3477,7 +3369,7 @@ step_build_pages() {
     MT_PAGE_I=1
     build_page_cover > "$dir/01-cover.svg"
     [[ -s "$dir/01-cover.svg" ]] || return 1
-    mt_render_page "$dir/01-cover" || return 1
+    printf '%s\n' "$dir/01-cover.svg" >> "$SUMMARY_DIR/pages.list" || return 1
 
     for i in "${!MT_PAGE_IDX[@]}"; do
         idx="${MT_PAGE_IDX[$i]}"; fn="${MT_CAT_FUNCS[$idx]}"
@@ -3485,7 +3377,7 @@ step_build_pages() {
         base=$(printf '%s/%02d-%s' "$dir" "$MT_PAGE_I" "${fn#run_}")
         build_page_test "$idx" > "$base.svg"
         [[ -s "$base.svg" ]] || return 1
-        mt_render_page "$base" || return 1
+        printf '%s\n' "$base.svg" >> "$SUMMARY_DIR/pages.list" || return 1
     done
     [[ -s "$SUMMARY_DIR/pages.list" ]]
 }
@@ -3519,14 +3411,14 @@ step_build_grouped_pages() {
     MT_PAGE_I=1
     build_page_overview > "$dir/01-overview.svg"
     [[ -s "$dir/01-overview.svg" ]] || return 1
-    mt_render_page "$dir/01-overview" || return 1
+    printf '%s\n' "$dir/01-overview.svg" >> "$SUMMARY_DIR/pages.list" || return 1
 
     for g in "${active[@]}"; do
         page=$((page+1)); MT_PAGE_I=$page
         base=$(printf '%s/%02d-%s' "$dir" "$page" "${slugs[$g]}")
         build_page_group "${titles[$g]}" "${notes[$g]}" "${members[$g]}" > "$base.svg" || return 1
         [[ -s "$base.svg" ]] || return 1
-        mt_render_page "$base" || return 1
+        printf '%s\n' "$base.svg" >> "$SUMMARY_DIR/pages.list" || return 1
     done
     [[ -s "$SUMMARY_DIR/pages.list" ]]
 }
@@ -3579,37 +3471,36 @@ build_report_pages() {
     fi
 
     : > "$SUMMARY_DIR/pages.list"
-    if spin_run "Собираю карточку" step_build_svg; then
-        if command -v rsvg-convert &>/dev/null || command -v convert &>/dev/null || command -v magick &>/dev/null; then
-            spin_run "Рендерю локальный PNG" step_render_png || true
-        fi
-        return 0
-    fi
-    return 1
+    spin_run "Собираю карточку" step_build_svg
 }
 
 render_and_upload_summary() {
-    local publish=0
+    local publish=0 published=0 MT_REPORT_FLAG_B64
     [[ "$SERVERGRADE_PUBLISH" == "1" && -n "$SERVERGRADE_PUBLISH_URL" ]] && publish=1
     print_separator "Формирую отчёт"
     gather_system_facts
-    spin_run "Проверяю зависимости для изображений" step_render_deps || true
+    MT_REPORT_FLAG_B64=$(mt_apple_flag_b64 "$SYS_COUNTRY") || true
     if ! build_report_pages; then
+        : > "$SUMMARY_DIR/pages.list"
         echo -e "  ${YELLOW}Не удалось собрать изображения.${NC}"
     fi
-    spin_run "Готовлю превью отчёта" step_build_preview_png || true
+    if (( publish )) && spin_run "Публикую результат на ServerGrade" publish_result_page && print_report_link; then
+        published=1
+    fi
+    # SVG уже готов к публикации. PNG дополняет его, только если рендерер
+    # установлен. На сайте PNG из SVG можно скачать прямо из браузера.
+    if [[ -s "$SUMMARY_DIR/pages.list" ]] && mt_has_png_renderer; then
+        spin_run "Готовлю дополнительные PNG" step_build_report_pngs "$published" || true
+    fi
     if (( ! publish )); then
         echo -e "  Публикация отключена. Локальные результаты: ${BOLD}${SUMMARY_DIR}${NC}"
-        return 0
-    fi
-    if ! spin_run "Публикую результат на ServerGrade" publish_result_page; then
+    elif (( ! published )); then
         echo -e "  ${YELLOW}Результат остался локально: ${SUMMARY_DIR}${NC}"
         return 1
-    fi
-    if [[ -s "$SUMMARY_DIR/pages.list" ]] && ! spin_run "Загружаю изображения" upload_result_assets; then
+    elif [[ -s "$SUMMARY_DIR/pages.list" ]] && ! spin_run "Загружаю изображения" upload_result_assets; then
         echo -e "  ${YELLOW}Отчёт опубликован, часть изображений не загрузилась.${NC}"
     fi
-    print_report_link
+    return 0
 }
 
 # ============================================================
