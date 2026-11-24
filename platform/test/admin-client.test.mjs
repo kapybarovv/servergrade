@@ -230,6 +230,31 @@ function assetRequest(id, token, extra = {}) {
   return new Request(origin + "/api/results/" + id + "/assets", { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: new URLSearchParams({ token, position: "1", name: "Synthetic overview", svg: reportSvg, png: reportPng.toString("base64"), ...extra }) });
 }
 
+function asnEnvironment(t) {
+  const env = environment();
+  env.DB = new SqliteD1();
+  t.after(() => env.DB.sqlite.close());
+  const add = (options) => {
+    const { id, score = 80, coverage = 100, verified = 1, security = true,
+      edgeAsn = 64496, edgeOrg = "Synthetic edge organization",
+      reportedAsn = "AS64496 · Synthetic reported organization",
+      createdAt = "2026-11-20T10:00:00.000Z" } = options;
+    env.DB.sqlite.prepare("INSERT INTO results(id,created_at,score,grade,network_score,performance_score,quality_score,coverage,country,city,cpu,cores,ram,ram_type,disk,disk_type,disk_model,server_vendor,report_url,runner_version) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)")
+      .run(id, createdAt, score, "Хорошо", score, score, score, coverage, "NL", "Amsterdam", "Synthetic ASN CPU", "2", "8 GiB", "DDR4", "80 GiB", "NVMe", "Synthetic disk", "Synthetic vendor", "", "test");
+    env.DB.sqlite.prepare("INSERT INTO result_details(result_id,asn,os,kernel,arch,virtualization,congestion_control,qdisc,uptime,load_avg,has_ipv4,has_ipv6,test_statuses,metrics,services) VALUES(?,?,'Linux','kernel','x86_64','kvm','cubic','fq_codel','1h','0',1,0,'','','')")
+      .run(id, reportedAsn);
+    if (security) env.DB.sqlite.prepare("INSERT INTO result_security(result_id,verified,verification_level,challenge_id,signature,source_ip_hash,edge_country,edge_asn,edge_org,edge_rtt_ms,edge_colo,external_probe_status,immutable_at) VALUES(?,?,?,NULL,'synthetic-signature','synthetic-hash','NL',?,?,5,'AMS','edge-only',?)")
+      .run(id, verified, verified ? "source-bound" : "unverified", edgeAsn, edgeOrg, createdAt);
+  };
+  return { env, add };
+}
+
+function tableReportIds(html) {
+  const body = html.match(/<tbody\b[^>]*>([\s\S]*?)<\/tbody>/i)?.[1];
+  assert.ok(body, "The ASN page must render a server-side results table");
+  return [...new Set([...body.matchAll(/href="(?:https:\/\/servergrade\.test)?\/test\/(\d{8})"/g)].map((match) => match[1]))];
+}
+
 test("Wrangler-bundled admin pages register working browser handlers", async (suite) => {
   const directory = mkdtempSync(join(tmpdir(), "servergrade-admin-bundle-test-"));
   suite.after(() => rmSync(directory, { recursive: true, force: true }));
@@ -522,6 +547,100 @@ test("Wrangler-bundled admin pages register working browser handlers", async (su
       assert.doesNotMatch(html, /rel="preload" as="image"[^>]*film\.MP4/);
       assert.match(response.headers.get("content-security-policy"), /media-src 'self' https:/);
     } finally { globalThis.fetch = originalFetch; }
+  });
+
+  await suite.test("public ASN API groups by verified edge ASN and keeps partial/zero-coverage rating semantics explicit", async (t) => {
+    const { env, add } = asnEnvironment(t);
+    add({ id: "41000001", score: 80, coverage: 80, reportedAsn: "AS64500 · Wrong claimed network" });
+    add({ id: "41000002", score: 61, coverage: 60, createdAt: "2026-11-21T10:00:00.000Z" });
+    add({ id: "41000003", score: 70, coverage: 20, createdAt: "2026-11-22T10:00:00.000Z" });
+    add({ id: "41000004", score: 100, coverage: 0, edgeOrg: "Latest trusted edge organization", createdAt: "2026-11-23T10:00:00.000Z" });
+    add({ id: "41000005", score: 100, verified: 0, edgeOrg: "Unverified organization", createdAt: "2026-11-24T10:00:00.000Z" });
+    add({ id: "41000006", score: 100, edgeAsn: 64500, reportedAsn: "AS64496 · Misdeclared network", createdAt: "2026-11-25T10:00:00.000Z" });
+    add({ id: "41000007", score: 100, edgeAsn: null, createdAt: "2026-11-26T10:00:00.000Z" });
+    add({ id: "41000008", score: 100, security: false, createdAt: "2026-11-27T10:00:00.000Z" });
+    const response = await worker.fetch(new Request(origin + "/api/asn/64496"), env);
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get("content-type"), /application\/json/);
+    assert.equal(response.headers.get("access-control-allow-origin"), "*");
+    assert.equal(response.headers.get("cache-control"), "public, max-age=60", "The global /api wrapper must preserve this public GET cache policy");
+    assert.equal(response.headers.get("x-robots-tag"), "noindex, nofollow");
+    const data = await response.json();
+    assert.equal(data.asn, 64496);
+    assert.equal(data.organization, "Latest trusted edge organization");
+    assert.equal(data.rating, 70.3);
+    assert.equal(data.rating_scale, 100);
+    assert.equal(data.verified_reports, 4);
+    assert.equal(data.rated_reports, 3);
+    assert.equal(data.average_coverage, 40);
+    assert.equal(data.last_test_at, "2026-11-23T10:00:00.000Z");
+    assert.equal(data.url, origin + "/asn/64496");
+    assert.equal(data.latest_report_url, origin + "/test/41000004");
+    assert.doesNotMatch(JSON.stringify(data), /source_ip_hash|synthetic-hash|synthetic-signature|nonce|token|terminal_report/);
+    const alias = await worker.fetch(new Request(origin + "/api/asn/AS64496"), env);
+    assert.equal(alias.status, 200);
+    assert.deepEqual(await alias.json(), data);
+    const head = await worker.fetch(new Request(origin + "/api/asn/64496", { method: "HEAD" }), env);
+    assert.equal(head.status, 200);
+    assert.equal((await head.arrayBuffer()).byteLength, 0);
+    assert.equal(head.headers.get("cache-control"), "public, max-age=60");
+    assert.equal(head.headers.get("access-control-allow-origin"), "*");
+  });
+
+  await suite.test("ASN API returns null rating without scored coverage and rejects invalid/unknown/non-read requests", async (t) => {
+    const { env, add } = asnEnvironment(t);
+    add({ id: "42000001", score: 99, coverage: 0, edgeOrg: "—" });
+    add({ id: "42000002", edgeAsn: 64497, verified: 0 });
+    const zero = await worker.fetch(new Request(origin + "/api/asn/64496"), env);
+    assert.equal(zero.status, 200);
+    const data = await zero.json();
+    assert.equal(data.rating, null);
+    assert.equal(data.rated_reports, 0);
+    assert.equal(data.verified_reports, 1);
+    assert.equal(data.average_coverage, 0);
+    assert.equal(data.organization, null);
+    for (const asn of ["abc", "AS64496oops", "64496.1", "0", "4294967296"]) {
+      const invalid = await worker.fetch(new Request(origin + "/api/asn/" + asn), env);
+      assert.equal(invalid.status, 400, asn);
+      assert.equal((await invalid.json()).error, "invalid_asn");
+      assert.match(invalid.headers.get("cache-control"), /no-store/);
+      assert.equal(invalid.headers.get("x-robots-tag"), "noindex, nofollow");
+    }
+    for (const asn of ["64497", "64599"]) {
+      const missing = await worker.fetch(new Request(origin + "/api/asn/" + asn), env);
+      assert.equal(missing.status, 404, asn);
+      assert.equal((await missing.json()).error, "asn_not_found");
+    }
+    for (const method of ["POST", "PUT", "DELETE"]) {
+      const rejected = await worker.fetch(new Request(origin + "/api/asn/64496", { method }), env);
+      assert.equal(rejected.status, 405, method);
+      assert.match(rejected.headers.get("cache-control"), /no-store/);
+    }
+  });
+
+  await suite.test("ASN HTML table uses the same trusted group, links reports and paginates thirty at a time", async (t) => {
+    const { env, add } = asnEnvironment(t);
+    const expected = [];
+    for (let index = 0; index < 35; index++) {
+      const id = String(43000000 + index);
+      expected.unshift(id);
+      add({ id, createdAt: new Date(Date.UTC(2026, 10, 24, 0, index)).toISOString(), reportedAsn: index === 0 ? "AS64500 · Wrong claimed network" : "AS64496 · Claimed network" });
+    }
+    add({ id: "43999991", verified: 0, createdAt: "2026-11-25T10:00:00.000Z" });
+    add({ id: "43999992", edgeAsn: 64500, createdAt: "2026-11-26T10:00:00.000Z" });
+    add({ id: "43999993", edgeAsn: null, createdAt: "2026-11-27T10:00:00.000Z" });
+    add({ id: "43999994", security: false, createdAt: "2026-11-28T10:00:00.000Z" });
+    const first = await worker.fetch(new Request(origin + "/asn/64496"), env);
+    assert.equal(first.status, 200);
+    const firstHtml = await first.text();
+    assert.match(firstHtml, /AS64496/);
+    assert.deepEqual(tableReportIds(firstHtml), expected.slice(0, 30));
+    assert.match(firstHtml, /href="(?:\/asn\/64496)?\?page=2"/);
+    const second = await worker.fetch(new Request(origin + "/asn/64496?page=2"), env);
+    assert.equal(second.status, 200);
+    const secondHtml = await second.text();
+    assert.deepEqual(tableReportIds(secondHtml), expected.slice(30));
+    for (const id of ["43999991", "43999992", "43999993", "43999994"]) assert.ok(!firstHtml.includes("/test/" + id) && !secondHtml.includes("/test/" + id), id);
   });
 
   await suite.test("oversized streaming uploads stop reading before parsing or writing the payload", async (t) => {

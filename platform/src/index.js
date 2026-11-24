@@ -4,6 +4,7 @@ import { renderAdminPage } from "./admin-ui.js";
 import { ensurePngSchema, parsePng, prepareReportPng, preparePreviewPng, pngImageResponse, previewImageResponse } from "./png.js";
 import { homeSeo, resultSeo, resultSummary, renderSeoHead, seoRobots, robotsResponse, sitemapResponse, sitemapIndexResponse, SITEMAP_PAGE_SIZE, SITEMAP_RESULTS_QUERY } from "./seo.js";
 import homePreviewData from "./preview.generated.js";
+import { ASN_PAGE_SIZE, parseAsn, readAsnSummary, listAsnReports, asnApiResponse } from "./asn.js";
 
 const headers = {
   "content-type": "text/html; charset=utf-8",
@@ -493,13 +494,64 @@ function renderBanners(banners) {
   return `<aside class="ad-banners" aria-label="Реклама">${media}</aside>${motion}`;
 }
 
+function renderBenchmarkRow(r) {
+  const href = `/test/${escapeHtml(r.id)}`;
+  const verified = Number(r.verified) === 1;
+  const search = [r.id, r.country, r.city, r.cpu, r.server_vendor, r.cores, r.ram, r.ram_type, r.disk, r.disk_type, r.score].filter(Boolean).join(" ").toLowerCase();
+  return `<tr data-result-row data-verified="${verified ? "verified" : "unverified"}" data-search="${escapeHtml(search)}"><td><a class="result-link" href="${href}">#${escapeHtml(r.id)}${r.pinned_at ? `<span class="pin-mark" title="Закреплён" aria-label="Закреплён">${icon("pin")}</span>` : ""}</a></td><td><a class="result-link regular" href="${href}">${location(r.country, r.city)}${present(r.cpu) ? `<span class="cpu">${present(r.server_vendor) ? `${escapeHtml(r.server_vendor)} · ` : ""}${escapeHtml(r.cpu)}</span>` : ""}</a></td><td><a class="result-link regular" href="${href}">${present(r.cores) ? escapeHtml(r.cores) : "—"}</a></td><td><a class="result-link regular" href="${href}">${present(r.ram) ? escapeHtml(r.ram) : "—"}${present(r.ram_type) ? `<span class="cpu">${escapeHtml(r.ram_type)}</span>` : ""}</a></td><td><a class="result-link regular" href="${href}">${present(r.disk) ? escapeHtml(r.disk) : "—"}${present(r.disk_type) ? `<span class="cpu">${escapeHtml(r.disk_type)}</span>` : ""}</a></td><td><a class="result-link score-cell" href="${href}">${clamp(r.score)}</a></td><td><a class="result-link" href="${href}"><span class="verification ${verified ? "" : "off"}">${verified ? "ВЕРИФИЦИРОВАНО" : "НЕ ПРОВЕРЕНО"}</span></a></td><td><a class="result-link open-link" href="${href}" aria-label="Открыть тест ${escapeHtml(r.id)}">${icon("arrow")}</a></td></tr>`;
+}
+
+function renderBenchmarkTable(rowsHtml) {
+  return `<div class="table-shell"><table><thead><tr><th>ID</th><th>ЛОКАЦИЯ / СЕРВЕР</th><th>ЯДРА</th><th>RAM</th><th>ДИСК</th><th>РЕЙТИНГ</th><th>ПРОВЕРКА</th><th></th></tr></thead><tbody>${rowsHtml}<tr data-filter-empty hidden><td class="filtered-empty" colspan="8">Ничего не найдено.</td></tr></tbody></table></div>`;
+}
+
 function renderHome(rows, stars, stats, activeRuns = [], banners = [], env = {}) {
   const pinnedCount = rows.filter(row => row.pinned_at).length;
-  const completedRows = rows.map((r) => { const href = `/test/${escapeHtml(r.id)}`; const verified = Number(r.verified) === 1; const search = [r.id, r.country, r.city, r.cpu, r.server_vendor, r.cores, r.ram, r.ram_type, r.disk, r.disk_type, r.score].filter(Boolean).join(" ").toLowerCase(); return `<tr data-result-row data-verified="${verified ? "verified" : "unverified"}" data-search="${escapeHtml(search)}"><td><a class="result-link" href="${href}">#${escapeHtml(r.id)}${r.pinned_at ? `<span class="pin-mark" title="Закреплён" aria-label="Закреплён">${icon("pin")}</span>` : ""}</a></td><td><a class="result-link regular" href="${href}">${location(r.country, r.city)}${present(r.cpu) ? `<span class="cpu">${present(r.server_vendor) ? `${escapeHtml(r.server_vendor)} · ` : ""}${escapeHtml(r.cpu)}</span>` : ""}</a></td><td><a class="result-link regular" href="${href}">${present(r.cores) ? escapeHtml(r.cores) : "—"}</a></td><td><a class="result-link regular" href="${href}">${present(r.ram) ? escapeHtml(r.ram) : "—"}${present(r.ram_type) ? `<span class="cpu">${escapeHtml(r.ram_type)}</span>` : ""}</a></td><td><a class="result-link regular" href="${href}">${present(r.disk) ? escapeHtml(r.disk) : "—"}${present(r.disk_type) ? `<span class="cpu">${escapeHtml(r.disk_type)}</span>` : ""}</a></td><td><a class="result-link score-cell" href="${href}">${clamp(r.score)}</a></td><td><a class="result-link" href="${href}"><span class="verification ${verified ? "" : "off"}">${verified ? "ВЕРИФИЦИРОВАНО" : "НЕ ПРОВЕРЕНО"}</span></a></td><td><a class="result-link open-link" href="${href}" aria-label="Открыть тест ${escapeHtml(r.id)}">${icon("arrow")}</a></td></tr>`; });
+  const completedRows = rows.map(renderBenchmarkRow);
   const activeRowsHtml = activeRuns.map((r) => { const id = String(r.id || ""); const displayId = id.split("-")[0].slice(-8); const search = `${id} проверяется выполняется`.toLowerCase(); return `<tr class="running-row" data-result-row data-verified="running" data-search="${escapeHtml(search)}"><td><span class="result-link">#${escapeHtml(displayId)}</span></td><td><span class="result-link regular"><span class="location">Запуск выполняется</span><span class="cpu">Начат ${escapeHtml(r.started_at || "недавно")}</span></span></td><td><span class="result-link regular">—</span></td><td><span class="result-link regular">—</span></td><td><span class="result-link regular">—</span></td><td><span class="result-link score-cell">—</span></td><td><span class="result-link"><span class="verification pending">ПРОВЕРЯЕТСЯ</span></span></td><td><span class="result-link"></span></td></tr>`; }).join("");
   const rowsHtml = completedRows.slice(0, pinnedCount).join("") + activeRowsHtml + completedRows.slice(pinnedCount).join("") || `<tr><td class="empty" colspan="8">Пока нет опубликованных или выполняющихся тестов.</td></tr>`;
   const command = "bash <(curl -fsSL https://raw.githubusercontent.com/kapybarovv/servergrade/main/servergrade.sh)";
-  return shell("Результаты тестов", `<main class="home-main"><section class="home-hero"><div class="hero-copy"><h1>Server<span>Grade</span></h1><p>Независимые технические замеры VPS. Баллы считаются на сервере, подтверждённые запуски привязаны к исходному IP.</p><div class="actions"><button class="button" type="button" data-copy="${escapeHtml(command)}">${icon("copy")}Запустить замер ${icon("arrow")}</button><a class="button secondary" href="https://github.com/kapybarovv/servergrade">${icon("github")}GitHub</a></div></div><div class="stats"><div class="stat"><strong>${Number(stats.total || 0).toLocaleString("ru-RU")}</strong><span>Всего замеров</span></div><div class="stat"><strong>${Number(stats.verified || 0).toLocaleString("ru-RU")}</strong><span>Верифицировано</span></div><div class="stat"><strong>${Number(stats.today || 0).toLocaleString("ru-RU")}</strong><span>Сегодня</span></div><div class="stat"><strong><i class="live-dot"></i>${Number(stats.active || 0).toLocaleString("ru-RU")}</strong><span>Проверяется сейчас</span></div></div></section>${renderBanners(banners)}<section id="benchmarks" class="results" data-results data-filter="all"><div class="results-toolbar"><div class="section-head"><span>Последние замеры</span></div><div class="table-tools"><label class="search-box">${icon("search")}<input data-result-search type="search" autocomplete="off" placeholder="Поиск по ID, стране, CPU, хостингу…" aria-label="Поиск по замерам"></label><div class="filter-pills" aria-label="Фильтр результатов"><button class="filter-pill active" type="button" data-filter="all">Все</button><button class="filter-pill" type="button" data-filter="verified">Верифицировано</button><button class="filter-pill" type="button" data-filter="unverified">Не проверено</button><button class="filter-pill" type="button" data-filter="running">Проверяются</button></div></div></div><div class="table-shell"><table><thead><tr><th>ID</th><th>ЛОКАЦИЯ / СЕРВЕР</th><th>ЯДРА</th><th>RAM</th><th>ДИСК</th><th>РЕЙТИНГ</th><th>ПРОВЕРКА</th><th></th></tr></thead><tbody>${rowsHtml}<tr data-filter-empty hidden><td class="filtered-empty" colspan="8">Ничего не найдено.</td></tr></tbody></table></div></section></main>${homeMotionScript()}`, stars, firstBannerPreload(banners), homeSeo(env));
+  return shell("Результаты тестов", `<main class="home-main"><section class="home-hero"><div class="hero-copy"><h1>Server<span>Grade</span></h1><p>Независимые технические замеры VPS. Баллы считаются на сервере, подтверждённые запуски привязаны к исходному IP.</p><div class="actions"><button class="button" type="button" data-copy="${escapeHtml(command)}">${icon("copy")}Запустить замер ${icon("arrow")}</button><a class="button secondary" href="https://github.com/kapybarovv/servergrade">${icon("github")}GitHub</a></div></div><div class="stats"><div class="stat"><strong>${Number(stats.total || 0).toLocaleString("ru-RU")}</strong><span>Всего замеров</span></div><div class="stat"><strong>${Number(stats.verified || 0).toLocaleString("ru-RU")}</strong><span>Верифицировано</span></div><div class="stat"><strong>${Number(stats.today || 0).toLocaleString("ru-RU")}</strong><span>Сегодня</span></div><div class="stat"><strong><i class="live-dot"></i>${Number(stats.active || 0).toLocaleString("ru-RU")}</strong><span>Проверяется сейчас</span></div></div></section>${renderBanners(banners)}<section id="benchmarks" class="results" data-results data-filter="all"><div class="results-toolbar"><div class="section-head"><span>Последние замеры</span></div><div class="table-tools"><label class="search-box">${icon("search")}<input data-result-search type="search" autocomplete="off" placeholder="Поиск по ID, стране, CPU, хостингу…" aria-label="Поиск по замерам"></label><div class="filter-pills" aria-label="Фильтр результатов"><button class="filter-pill active" type="button" data-filter="all">Все</button><button class="filter-pill" type="button" data-filter="verified">Верифицировано</button><button class="filter-pill" type="button" data-filter="unverified">Не проверено</button><button class="filter-pill" type="button" data-filter="running">Проверяются</button></div></div></div>${renderBenchmarkTable(rowsHtml)}</section></main>${homeMotionScript()}`, stars, firstBannerPreload(banners), homeSeo(env));
+}
+
+function renderAsnPage(summary, rows, page, lastPage, env) {
+  const { asn, organization, rating, rating_scale, rated_reports, verified_reports, url } = summary;
+  const path = `/asn/${asn}`;
+  const title = `AS${asn}${organization ? ` · ${organization}` : ""}`;
+  const count = verified_reports.toLocaleString("ru-RU");
+  const score = rating === null ? "—" : `${rating.toLocaleString("ru-RU")} / ${rating_scale}`;
+  const description = `Верифицированные замеры и средний рейтинг серверов AS${asn}.`;
+  const navLink = (number, ru, en, rel) => `<a class="button secondary" rel="${rel}" href="${path}${number > 1 ? `?page=${number}` : ""}" data-i18n-ru="${ru}" data-i18n-en="${en}">${ru}</a>`;
+  const pagination = lastPage > 1 ? `<nav class="actions" aria-label="Pages">
+    ${page > 1 ? navLink(page - 1, "← Назад", "← Previous", "prev") : ""}
+    <span data-i18n-ru="Страница ${page} из ${lastPage}" data-i18n-en="Page ${page} of ${lastPage}">Страница ${page} из ${lastPage}</span>
+    ${page < lastPage ? navLink(page + 1, "Дальше →", "Next →", "next") : ""}
+  </nav>` : "";
+  const content = `<main class="home-main">
+    <a class="back" href="/" data-i18n-ru="← Все тесты" data-i18n-en="← All benchmarks">← Все тесты</a>
+    <div class="result-heading"><div><h1>${escapeHtml(title)}</h1>
+      <p class="result-summary"><span data-i18n-ru="Средний рейтинг" data-i18n-en="Average rating">Средний рейтинг</span> <strong>${score}</strong> · <span data-i18n-ru="Верифицированных замеров:" data-i18n-en="Verified reports:">Верифицированных замеров:</span> ${count} · <span data-i18n-ru="Учтено в рейтинге:" data-i18n-en="Rated reports:">Учтено в рейтинге:</span> ${rated_reports.toLocaleString("ru-RU")}</p>
+    </div></div>
+    <section class="results" aria-label="Замеры AS${asn}">${renderBenchmarkTable(rows.map(renderBenchmarkRow).join(""))}${pagination}</section>
+  </main>`;
+  return shell(title, content, null, "", {
+    ...homeSeo(env), title: `${title} — ServerGrade`, description, canonical: url,
+    robots: "noindex, nofollow", structuredData: null,
+  });
+}
+
+async function asnPageResponse(url, env, request) {
+  const asn = parseAsn(url.pathname.split("/")[2]);
+  if (asn === null) return new Response("ASN not found", { status: 404 });
+  const rawPage = url.searchParams.get("page") ?? "1";
+  const page = /^\d{1,8}$/.test(rawPage) ? Number(rawPage) : 0;
+  if (page < 1) return new Response("Page not found", { status: 404 });
+  const summary = await readAsnSummary(env.DB, asn, publicOrigin(request, env));
+  if (!summary) return new Response("ASN not found", { status: 404 });
+  const lastPage = Math.ceil(summary.verified_reports / ASN_PAGE_SIZE);
+  if (page > lastPage) return new Response("Page not found", { status: 404 });
+  const rows = await listAsnReports(env.DB, asn, page);
+  return new Response(renderAsnPage(summary, rows, page, lastPage, env), { headers });
 }
 
 async function githubStars() {
@@ -660,6 +712,11 @@ async function handleRequest(request, env, ctx) {
     if ((request.method === "GET" || request.method === "HEAD") && env.PUBLIC_ORIGIN && url.origin !== publicOrigin(request, env)) {
       return Response.redirect(`${publicOrigin(request, env)}${url.pathname}${url.search}`, 308);
     }
+    const asnApi = url.pathname.match(/^\/api\/asn(?:\/([^/]+))?\/?$/);
+    if (asnApi) return asnApiResponse(request, env.DB, asnApi[1], publicOrigin(request, env));
+    if (["GET", "HEAD"].includes(request.method) && /^\/asn\/[^/]+\/?$/.test(url.pathname)) {
+      return asnPageResponse(url, env, request);
+    }
     const bannerResponse = await bannerImageResponse(request, env, ctx);
     if (bannerResponse) return bannerResponse;
     const pngResponse = await pngImageResponse(request, env, ctx);
@@ -756,7 +813,8 @@ export default {
     const path = new URL(request.url).pathname;
     const isHtml = (responseHeaders.get("content-type") || "").includes("text/html");
     if (isHtml || path.startsWith("/api/") || response.status >= 400) responseHeaders.set("x-robots-tag", seoRobots(path, response.status));
-    if (path.startsWith("/api/") || response.status >= 400) responseHeaders.set("cache-control", "no-store");
+    const publicAsn = path.startsWith("/api/asn/") && response.status === 200;
+    if ((path.startsWith("/api/") && !publicAsn) || response.status >= 400) responseHeaders.set("cache-control", "no-store");
     return new Response(request.method === "HEAD" ? null : response.body, { status: response.status, statusText: response.statusText, headers: responseHeaders });
   },
 };

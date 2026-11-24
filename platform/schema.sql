@@ -145,6 +145,9 @@ CREATE TABLE IF NOT EXISTS result_security (
 CREATE INDEX IF NOT EXISTS result_security_verified
   ON result_security(verified, result_id);
 
+CREATE INDEX IF NOT EXISTS result_security_verified_asn
+  ON result_security(edge_asn, result_id) WHERE verified = 1;
+
 CREATE TABLE IF NOT EXISTS secure_upload_tokens (
   result_id TEXT PRIMARY KEY,
   token_hash TEXT NOT NULL,
