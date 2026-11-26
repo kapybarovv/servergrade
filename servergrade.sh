@@ -32,7 +32,7 @@ ensure_utf8_locale
 #  ServerGrade — интерактивная диагностика сервера
 # ============================================================
 
-SCRIPT_VERSION="1.6.1"
+SCRIPT_VERSION="1.6.2"
 REPO_URL="https://raw.githubusercontent.com/kapybarovv/servergrade/main/servergrade.sh"
 
 # Цвета
@@ -55,6 +55,8 @@ MT_RUN_ID=""
 # Независимые IP-проверки выполняются пулом; нагрузочные замеры — отдельно.
 SERVERGRADE_JOBS="${SERVERGRADE_JOBS:-2}"
 case "$SERVERGRADE_JOBS" in 1|2|3|4) ;; *) SERVERGRADE_JOBS=2 ;; esac
+SERVERGRADE_YABS_TIMEOUT="${SERVERGRADE_YABS_TIMEOUT:-900}"
+[[ "$SERVERGRADE_YABS_TIMEOUT" =~ ^[1-9][0-9]{0,3}$ ]] && (( SERVERGRADE_YABS_TIMEOUT <= 3600 )) || SERVERGRADE_YABS_TIMEOUT=900
 
 # Спонсор: подпись в подвале сводки (см. sv_sponsor) и блок в главном меню
 # (см. print_stencloud_promo).
@@ -345,8 +347,7 @@ test_deps() {
 # Чего не хватает для перечисленных тестов (список команд через пробел, без повторов).
 # curl в базе всегда: на нём держится сама сводка — гео, аплоад картинки, шрифты.
 missing_deps_for() {
-    local fn d; local -a want=( curl script ) out=()
-    [[ "${SERVERGRADE_JOBS:-1}" =~ ^[2-4]$ ]] && want+=( setsid )
+    local fn d; local -a want=( curl script setsid ) out=()
     for fn in "$@"; do
         for d in $(test_deps "$fn"); do
             [[ " ${want[*]} " == *" $d "* ]] || want+=( "$d" )
@@ -416,28 +417,49 @@ install_deps_for() {
 #  Функции тестов
 # ============================================================
 
+mt_download_test_script() {
+    local url="$1" destination="$2"
+    [[ "$url" == https://* ]] || return 1
+    if ! curl -fsSL --proto '=https' --proto-redir '=https' --connect-timeout 10 --max-time 60 \
+        -o "$destination" "$url"; then
+        printf 'Не удалось загрузить скрипт теста: %s\n' "$url" >&2
+        rm -f "$destination"
+        return 1
+    fi
+    [[ -s "$destination" ]] || { printf 'Скрипт теста пуст: %s\n' "$url" >&2; return 1; }
+}
+
+mt_run_remote_script() {
+    local url="$1" source rc; shift
+    source=$(mktemp "${TMPDIR:-/tmp}/servergrade-upstream.XXXXXXXX") || return 1
+    mt_download_test_script "$url" "$source" || { rm -f "$source"; return 1; }
+    bash -o pipefail "$source" "$@"; rc=$?
+    rm -f "$source"
+    return "$rc"
+}
+
 run_ip_region() {
     print_separator "IP Region"
     check_and_install wget
-    bash <(wget -qO- https://github.com/Davoyan/ipregion/raw/main/ipregion.sh)
+    mt_run_remote_script https://raw.githubusercontent.com/Davoyan/ipregion/main/ipregion.sh
 }
 
 run_censorcheck_geoblock() {
     print_separator "Censorcheck — проверка геоблока"
     check_and_install wget
-    bash <(wget -qO- https://github.com/vernette/censorcheck/raw/master/censorcheck.sh) --mode geoblock
+    mt_run_remote_script https://raw.githubusercontent.com/vernette/censorcheck/master/censorcheck.sh --mode geoblock
 }
 
 run_censorcheck_dpi() {
     print_separator "Censorcheck — DPI (серверы РФ)"
     check_and_install wget
-    bash <(wget -qO- https://github.com/vernette/censorcheck/raw/master/censorcheck.sh) --mode dpi
+    mt_run_remote_script https://raw.githubusercontent.com/vernette/censorcheck/master/censorcheck.sh --mode dpi
 }
 
 run_censorcheck_tlab() {
     print_separator "Censorcheck — censorcheck.tlab.pw"
     check_and_install wget
-    wget -qO- censorcheck.tlab.pw | bash
+    mt_run_remote_script https://censorcheck.tlab.pw/
 }
 
 run_iperf3_ru() {
@@ -445,7 +467,7 @@ run_iperf3_ru() {
     check_and_install wget
     check_and_install iperf3
     check_and_install jq
-    bash <(wget -qO- https://github.com/itdoginfo/russian-iperf3-servers/raw/main/speedtest.sh)
+    mt_run_remote_script https://raw.githubusercontent.com/itdoginfo/russian-iperf3-servers/main/speedtest.sh
 }
 
 run_iperf3_tlab() {
@@ -453,13 +475,40 @@ run_iperf3_tlab() {
     check_and_install wget
     check_and_install iperf3
     check_and_install jq
-    wget -qO- bench.tlab.pw | bash
+    mt_run_remote_script https://bench.tlab.pw/
 }
 
 run_yabs() {
     print_separator "YABS — бенчмарк сервера"
-    check_and_install curl
-    curl -sL yabs.sh | bash -s -- -4
+    local source rc pid group_file monitor=0
+    local -a launch=()
+    check_and_install curl || return 1
+    check_and_install timeout coreutils || return 1
+    command -v setsid >/dev/null || { printf 'Для безопасного запуска YABS нужен setsid.\n' >&2; return 1; }
+    source=$(mktemp "${TMPDIR:-/tmp}/servergrade-yabs.XXXXXXXX") || return 1
+    mt_download_test_script https://yabs.sh "$source" || { rm -f "$source"; return 1; }
+    printf 'YABS: диск и Geekbench 4; сеть измеряется отдельными тестами (-i).\n'
+    printf 'Лимит YABS: %s с. Результаты сохраняются в локальный лог во время прогона.\n' "$SERVERGRADE_YABS_TIMEOUT"
+    if command -v nice >/dev/null && nice -n 10 true 2>/dev/null; then launch+=(nice -n 10); fi
+    if command -v ionice >/dev/null && ionice -c 3 true 2>/dev/null; then launch+=(ionice -c 3); fi
+    (( ${#launch[@]} )) && printf 'Пониженный приоритет процесса для сохранения отзывчивости сервера.\n'
+    group_file="${MT_TEST_LOGFILE:-${TMPDIR:-/tmp}/servergrade-yabs}.yabs.pgid"
+    [[ $- == *m* ]] && monitor=1
+    set +m
+    setsid timeout -k 5 "$SERVERGRADE_YABS_TIMEOUT" "${launch[@]}" bash -o pipefail "$source" -4 -i &
+    pid=$!
+    printf '%s\n' "$pid" > "$group_file"
+    if wait "$pid"; then rc=0; else rc=$?; fi
+    # timeout implementations differ in descendant handling. The isolated
+    # process group is also cleaned after timeout and by the outer supervisor.
+    kill -TERM -- "-$pid" 2>/dev/null || true
+    kill -KILL -- "-$pid" 2>/dev/null || true
+    rm -f "$source" "$group_file"
+    (( monitor )) && set -m
+    if (( rc == 124 || rc == 137 )); then
+        printf 'YABS остановлен по лимиту времени; незавершённые замеры не считаются успешными.\n' >&2
+    fi
+    return "$rc"
 }
 
 run_ip_check_place() {
@@ -467,13 +516,13 @@ run_ip_check_place() {
     check_and_install curl
     # -E: английский + полный прогон без меню; -n: не ставить зависимости молча;
     # </dev/null: под псевдо-TTY от `script` тулза иначе может зависнуть на read
-    bash <(curl -Ls https://IP.Check.Place) -E -n </dev/null
+    mt_run_remote_script https://IP.Check.Place -E -n </dev/null
 }
 
 run_bench_sh() {
     print_separator "bench.sh — параметры сервера и скорость"
     check_and_install wget
-    wget -qO- bench.sh | bash
+    mt_run_remote_script https://bench.sh/
 }
 
 run_ip_quality() {
@@ -481,7 +530,7 @@ run_ip_quality() {
     check_and_install curl
     # БЫЛО -EI: флаг -I = интерактивное меню, которое зависало под `script`.
     # -E -n + </dev/null — полный отчёт без меню и без запросов ввода.
-    bash <(curl -Ls https://IP.Check.Place) -E -n </dev/null
+    mt_run_remote_script https://IP.Check.Place -E -n </dev/null
 }
 
 run_sysbench_cpu() {
@@ -492,12 +541,23 @@ run_sysbench_cpu() {
 
 MULTITEST_SKIPPED=0
 MT_ACTIVE_PID=""
+MT_ACTIVE_LOG=""
 MT_CHALLENGE_ID=""
 MT_CHALLENGE_NONCE=""
 
 multitest_skip_handler() {
     MULTITEST_SKIPPED=1
+    [[ -n "$MT_ACTIVE_LOG" ]] && mt_signal_test_groups "$MT_ACTIVE_LOG" TERM
     [[ -n "$MT_ACTIVE_PID" ]] && kill "$MT_ACTIVE_PID" 2>/dev/null || true
+}
+
+mt_signal_test_groups() {
+    local logfile="$1" signal="$2" file group
+    for file in "$logfile.capture.pgid" "$logfile.yabs.pgid"; do
+        group=""; [[ -s "$file" ]] && read -r group < "$file"
+        [[ "$group" =~ ^[1-9][0-9]*$ && "$group" != "$$" && "$group" != "$BASHPID" ]] || continue
+        kill -"$signal" -- "-$group" 2>/dev/null || true
+    done
 }
 
 mt_run_activity() {
@@ -572,6 +632,7 @@ run_test_with_progress() {
     panel_top=$((rows-2)); scroll_bottom=$((rows-3))
     capture_test "$fn" "$logfile" >"$live" 2>&1 &
     MT_ACTIVE_PID=$!
+    MT_ACTIVE_LOG="$logfile"
     printf '\033[?25l\033[1;%dr\033[%d;1H' "$scroll_bottom" "$scroll_bottom"
     while kill -0 "$MT_ACTIVE_PID" 2>/dev/null; do
         lines_now=$(wc -l < "$live" 2>/dev/null || echo 0)
@@ -583,7 +644,9 @@ run_test_with_progress() {
         sleep .25
     done
     wait "$MT_ACTIVE_PID"; rc=$?
+    mt_signal_test_groups "$logfile" KILL
     MT_ACTIVE_PID=""
+    MT_ACTIVE_LOG=""
     lines_now=$(wc -l < "$live" 2>/dev/null || echo 0)
     (( lines_now >= next_line )) && sed -n "${next_line},${lines_now}p" "$live"
     printf '\033[r\033[%d;1H\033[J\033[?25h' "$panel_top"
@@ -606,8 +669,9 @@ mt_test_is_probe() {
 }
 
 mt_export_test_functions() {
-    export RED GREEN YELLOW CYAN BOLD NC SCRIPT_VERSION APT_INDEX_READY SCRIPT_CAPTURE
-    export -f capture_test print_separator check_and_install install_package apt_install_package detect_pkg_manager
+    export RED GREEN YELLOW CYAN BOLD NC SCRIPT_VERSION APT_INDEX_READY SCRIPT_CAPTURE SERVERGRADE_YABS_TIMEOUT
+    export -f capture_test mt_follow_test_log mt_signal_test_groups print_separator check_and_install install_package apt_install_package detect_pkg_manager
+    export -f mt_download_test_script mt_run_remote_script
     export -f run_ip_region run_censorcheck_geoblock run_censorcheck_dpi run_censorcheck_tlab
     export -f run_iperf3_ru run_iperf3_tlab run_yabs run_ip_check_place run_bench_sh run_ip_quality run_sysbench_cpu
 }
@@ -630,6 +694,7 @@ mt_parallel_stop_jobs() {
     local i pgid
     for i in "${!test_funcs[@]}"; do
         [[ "${job_state[$i]}" == running ]] || continue
+        mt_signal_test_groups "${test_log[$i]}" TERM
         pgid=""; [[ -s "${job_group[$i]}" ]] && read -r pgid < "${job_group[$i]}"
         if [[ "$pgid" =~ ^[1-9][0-9]*$ ]]; then kill -TERM -- "-$pgid" 2>/dev/null || true
         else kill -TERM "${job_pid[$i]}" 2>/dev/null || true; fi
@@ -637,6 +702,7 @@ mt_parallel_stop_jobs() {
     sleep .2
     for i in "${!test_funcs[@]}"; do
         [[ "${job_state[$i]}" == running ]] || continue
+        mt_signal_test_groups "${test_log[$i]}" KILL
         pgid=""; [[ -s "${job_group[$i]}" ]] && read -r pgid < "${job_group[$i]}"
         [[ "$pgid" =~ ^[1-9][0-9]*$ ]] && kill -KILL -- "-$pgid" 2>/dev/null || true
         wait "${job_pid[$i]}" 2>/dev/null || true
@@ -995,6 +1061,7 @@ run_all() {
         return 1
     }
     SUMMARY_DIR=$(cd -- "$SUMMARY_DIR" && pwd -P) || return 1
+    printf '  Локальные логи этого прогона: %s\n' "$SUMMARY_DIR"
     mt_request_challenge
     mt_run_activity start
 
@@ -1391,26 +1458,115 @@ strip_ansi() {
     # 1) убираем ANSI; 2) хвостовой \r (из \r\n); 3) \r-перезаписи: оставляем только
     # текст после последнего \r в строке — как показывает терминал (иначе прогресс-
     # строки вида "Performing iperf3..." слипались с результатом "Clouvider | London ...").
-    sed -r 's/\x1B\[[0-?]*[ -/]*[@-~]//g; s/\x1B\][^\x07]*\x07//g; s/\r$//; s/.*\r//'
+    # ANSI ranges describe bytes, not locale collation. A Russian UTF-8
+    # locale can reject these ranges; keep C local to the filter so Cyrillic
+    # text and the surrounding interface retain their original UTF-8 bytes.
+    LC_ALL=C sed -E $'s/\033\\[[0-?]*[ -/]*[@-~]//g; s/\033\\][^\007\033]*(\007|\033\\\\)//g; s/\r$//; s/.*\r//'
+}
+
+# stdout is only a viewer. The benchmark writes directly into its raw file,
+# so a disconnected reader or failed pipe cannot interrupt log recording.
+mt_follow_test_log() {
+    local logfile="$1" donefile="$2" next=1 bytes count live=1 final=0
+    trap '' PIPE
+    set +o pipefail
+    while :; do
+        [[ -f "$logfile" ]] || break
+        bytes=$(wc -c < "$logfile" 2>/dev/null || echo 0)
+        if (( bytes >= next )); then
+            count=$((bytes-next+1))
+            if (( live )); then
+                tail -c "+$next" "$logfile" 2>/dev/null | head -c "$count" 2>/dev/null || live=0
+            fi
+            next=$((bytes+1))
+        fi
+        if [[ -e "$donefile" ]]; then
+            (( final )) && break
+            final=1
+            continue
+        fi
+        sleep .1
+    done
+    return 0
 }
 
 # Запуск теста с захватом вывода в лог (для парсинга метрик).
 capture_test() {
-    local fn="$1"
-    local logfile="$2"
+    local fn="$1" logfile="$2" producer viewer rc=0 stop=0 monitor=0
+    local donefile="$2.capture.done"
+    local old_int old_term old_hup
+    command -v setsid >/dev/null || { printf 'Для записи теста нужен setsid (util-linux).\n' >&2; return 1; }
+    : > "$logfile" || return 1
+    rm -f "$donefile"
 
-    export RED GREEN YELLOW CYAN BOLD NC SCRIPT_VERSION APT_INDEX_READY
+    export RED GREEN YELLOW CYAN BOLD NC SCRIPT_VERSION APT_INDEX_READY SERVERGRADE_YABS_TIMEOUT
+    export MT_TEST_LOGFILE="$logfile"
     export -f print_separator check_and_install install_package apt_install_package detect_pkg_manager
+    export -f mt_download_test_script mt_run_remote_script
     export -f run_ip_region run_censorcheck_geoblock run_censorcheck_dpi \
               run_censorcheck_tlab run_iperf3_ru run_iperf3_tlab run_yabs \
               run_ip_check_place run_bench_sh run_ip_quality run_sysbench_cpu
-
+    [[ $- == *m* ]] && monitor=1
+    set +m
+    mt_follow_test_log "$logfile" "$donefile" & viewer=$!
     if [[ "$SCRIPT_CAPTURE" == "util" ]]; then
-        COLUMNS=200 script -q -e -c "stty cols 200 2>/dev/null; bash -o pipefail -c '$fn'" "$logfile"
+        COLUMNS=200 setsid script -q -f -e -c "stty cols 200 2>/dev/null; bash -o pipefail -c '$fn'" "$logfile" > /dev/null 2>&1 </dev/null &
     else
-        COLUMNS=200 bash -o pipefail -c "$fn" 2>&1 | tee "$logfile"
-        return "${PIPESTATUS[0]}"
+        COLUMNS=200 setsid bash -o pipefail -c "$fn" > "$logfile" 2>&1 </dev/null &
     fi
+    producer=$!
+    printf '%s\n' "$producer" > "$logfile.capture.pgid"
+    old_int=$(trap -p INT); old_term=$(trap -p TERM); old_hup=$(trap -p HUP)
+    trap 'stop=130; mt_signal_test_groups "$logfile" TERM' INT
+    trap 'stop=143; mt_signal_test_groups "$logfile" TERM' TERM
+    trap 'stop=129; mt_signal_test_groups "$logfile" TERM' HUP
+    if wait "$producer"; then rc=0; else rc=$?; fi
+    if (( stop )); then
+        sleep .2
+        mt_signal_test_groups "$logfile" KILL
+        wait "$producer" 2>/dev/null || true
+        rc=$stop
+    fi
+    # Remove any remaining descendants even when an upstream exits early.
+    mt_signal_test_groups "$logfile" TERM
+    mt_signal_test_groups "$logfile" KILL
+    : > "$donefile"
+    wait "$viewer" 2>/dev/null || true
+    rm -f "$donefile" "$logfile.capture.pgid" "$logfile.yabs.pgid"
+    trap - INT TERM HUP
+    [[ -n "$old_int" ]] && eval "$old_int"
+    [[ -n "$old_term" ]] && eval "$old_term"
+    [[ -n "$old_hup" ]] && eval "$old_hup"
+    (( monitor )) && set -m
+    return "$rc"
+}
+
+sanitize_terminal_report() {
+    # Keep raw files private on the VPS. Only the existing public terminal
+    # representation is sanitized; known host addresses are literal matches.
+    strip_ansi | LC_ALL=C tr -d '\000-\010\013\014\016-\037\177' | LC_ALL=C awk \
+        -v ip4="${SYS_IP4:-}" -v ip6="${SYS_IP6:-}" \
+        -v masked4="$(mask_ip "${SYS_IP4:-}")" -v masked6="$(mask_ip "${SYS_IP6:-}")" '
+        function replace_literal(line, old, replacement, at, output, before, after, chars) {
+            if (old=="") return line
+            output=""
+            chars=old ~ /:/ ? "[0-9a-fA-F:]" : "[0-9.]"
+            while ((at=index(line,old))>0) {
+                before=at>1 ? substr(line,at-1,1) : ""
+                after=substr(line,at+length(old),1)
+                output=output substr(line,1,at-1) ((before!="" && before ~ chars || after!="" && after ~ chars) ? old : replacement)
+                line=substr(line,at+length(old))
+            }
+            return output line
+        }
+        {
+            lower=tolower($0)
+            if (lower ~ /https?:\/\/[^[:space:]]*geekbench[^[:space:]]*\/claim([\/?:]|$)/ ||
+                lower ~ /claim[^[:space:]]*[[:space:]].*https?:\/\// ||
+                lower ~ /https?:\/\/[^[:space:]]*geekbench[^[:space:]]*[?&]claim=/) next
+            line=replace_literal($0,ip4,masked4)
+            print replace_literal(line,ip6,masked6)
+        }'
 }
 
 # --- Загрузчики на бесплатные хостинги (каждый: файл=$1 -> URL в stdout) ---
@@ -1550,7 +1706,7 @@ publish_result_page() {
         for idx in "${!test_log[@]}"; do
             [[ -s "${test_log[$idx]}" ]] || continue
             printf '\n\n===== %s =====\n' "${test_names[$idx]}"
-            strip_ansi < "${test_log[$idx]}"
+            sanitize_terminal_report < "${test_log[$idx]}"
         done
     } | head -c 180000 > "$terminal_file" || return 1
 

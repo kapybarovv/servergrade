@@ -255,6 +255,38 @@ function tableReportIds(html) {
   return [...new Set([...body.matchAll(/href="(?:https:\/\/servergrade\.test)?\/test\/(\d{8})"/g)].map((match) => match[1]))];
 }
 
+function htmlAttributes(source) {
+  return new Map([...source.matchAll(/([\w:-]+)(?:="([^"]*)")?/g)].map((match) => [match[1], match[2] ?? ""]));
+}
+
+function reportPanels(html) {
+  const stack = [], panels = [];
+  for (const match of html.matchAll(/<(\/?)section\b([^>]*)>/g)) {
+    if (!match[1]) {
+      const attributes = htmlAttributes(match[2]);
+      stack.push({ attributes, start: match.index + match[0].length });
+    } else {
+      const section = stack.pop();
+      if (section?.attributes.has("data-result-view")) panels.push({ ...section, content: html.slice(section.start, match.index) });
+    }
+  }
+  return panels;
+}
+
+function saveReportContent(env, id, { statuses = [], metrics = [], services = [], terminal = "" } = {}) {
+  const rows = (values) => values.map((value) => value.join("\x1f")).join("\n");
+  env.DB.sqlite.prepare("INSERT INTO result_details(result_id,asn,os,kernel,arch,virtualization,congestion_control,qdisc,uptime,load_avg,has_ipv4,has_ipv6,test_statuses,metrics,services) VALUES(?,'AS64496 · Synthetic provider','Linux','kernel','x86_64','kvm','cubic','fq_codel','1h','0',1,0,?,?,?)")
+    .run(id, rows(statuses), rows(metrics), rows(services));
+  env.DB.sqlite.prepare("INSERT INTO result_terminal_reports(result_id,content) VALUES(?,?)").run(id, terminal);
+}
+
+function assertReportScriptsCompile(html) {
+  const scripts = [...html.matchAll(/<script\b([^>]*)>([\s\S]*?)<\/script>/gi)]
+    .filter((match) => !/application\/ld\+json/.test(match[1]));
+  assert.ok(scripts.length > 0, "The report includes its browser handlers");
+  new Script(scripts.map((match) => match[2]).join("\n;\n"), { filename: "report-inline-bundled.js" });
+}
+
 test("Wrangler-bundled admin pages register working browser handlers", async (suite) => {
   const directory = mkdtempSync(join(tmpdir(), "servergrade-admin-bundle-test-"));
   suite.after(() => rmSync(directory, { recursive: true, force: true }));
@@ -482,6 +514,100 @@ test("Wrangler-bundled admin pages register working browser handlers", async (su
     assert.equal(privateResponse.headers.get("x-robots-tag"), "noindex, nofollow");
     const generic = await worker.fetch(new Request(origin + "/preview.png"), env);
     assert.equal(generic.status, 200); assert.equal(generic.headers.get("content-type"), "image/png");
+  });
+
+  await suite.test("report format URLs render accessible selected panels and useful native disclosures without JavaScript", async (t) => {
+    const { env, id } = resultEnvironment(t);
+    saveReportContent(env, id, {
+      statuses: [["run_empty", "Synthetic status only", "ошибка"], ["run_region", "Synthetic IP region", "выполнен"], ["run_network", "Synthetic network", "выполнен"]],
+      metrics: [["run_region", "IPv4 region", "NL", "ok"]],
+      services: [["run_network", "service", "example.test", "", "ok", "45 ms"]],
+    });
+    const response = await worker.fetch(new Request(origin + "/test/" + id + "?view=full"), env);
+    assert.equal(response.status, 200);
+    const html = await response.text();
+    const tabs = [...html.matchAll(/<a\b([^>]*\brole="tab"[^>]*)>/g)].map((match) => htmlAttributes(match[1]));
+    assert.equal(tabs.length, 3);
+    const selected = tabs.filter((attributes) => attributes.get("aria-selected") === "true");
+    assert.equal(selected.length, 1);
+    assert.equal(selected[0].get("aria-controls"), "report-full");
+    assert.ok(selected[0].get("class").split(/\s+/).includes("active"));
+    assert.equal(selected[0].get("href"), "?view=full#report-full");
+    const panels = reportPanels(html);
+    assert.equal(panels.length, 3);
+    assert.equal(panels.filter((panel) => !panel.attributes.has("hidden")).length, 1);
+    const full = panels.find((panel) => panel.attributes.get("data-result-view") === "full");
+    assert.equal(full.attributes.has("hidden"), false);
+    assert.equal(full.attributes.get("role"), "tabpanel");
+    assert.equal(full.attributes.get("aria-labelledby"), selected[0].get("id"));
+    const disclosures = [...full.content.matchAll(/<details\b([^>]*)>([\s\S]*?)<\/details>/g)];
+    assert.equal(disclosures.length, 2, "Status-only tests must not render an empty disclosure");
+    assert.ok(htmlAttributes(disclosures[0][1]).has("open"), "The first test with recorded values is expanded");
+    assert.match(disclosures[0][2], /Synthetic IP region/);
+    assert.match(disclosures[0][2], /IPv4 region/);
+    assert.match(disclosures[0][2], />NL</);
+    assert.equal(htmlAttributes(disclosures[1][1]).has("open"), false);
+    assert.match(disclosures[1][2], /example\.test/);
+    assert.match(disclosures[1][2], /45 ms/);
+    const empty = full.content.match(/<article\b[^>]*class="[^"]*test-group-empty[^>]*>([\s\S]*?)<\/article>/);
+    assert.ok(empty); assert.match(empty[1], /Synthetic status only/);
+    assert.match(empty[1], /Для этого теста сохранился только статус/);
+    assertReportScriptsCompile(html);
+
+    const fallback = await (await worker.fetch(new Request(origin + "/test/" + id + "?view=invalid"), env)).text();
+    assert.equal(reportPanels(fallback).find((panel) => !panel.attributes.has("hidden")).attributes.get("data-result-view"), "images");
+  });
+
+  await suite.test("headers-only terminal logs show recorded measurements rather than pretending to preserve raw output", async (t) => {
+    const { env, id } = resultEnvironment(t);
+    saveReportContent(env, id, {
+      statuses: [["run_region", "Synthetic IP region", "выполнен"], ["run_network", "Synthetic network", "выполнен"]],
+      metrics: [["run_region", "Latency p95", "2.14 ms", "ok"]],
+      services: [["run_network", "sep", "Ignored separator", "", "", ""], ["run_network", "service", "example.test", "", "ok", "NL"]],
+      terminal: "\n===== Synthetic IP region =====\n\n===== Synthetic network =====\r\n",
+    });
+    const html = await (await worker.fetch(new Request(origin + "/test/" + id + "?view=terminal"), env)).text();
+    const panel = reportPanels(html).find((item) => !item.attributes.has("hidden"));
+    assert.equal(panel.attributes.get("data-result-view"), "terminal");
+    assert.match(panel.content, /Исходный вывод не сохранился/);
+    assert.match(panel.content, /Latency p95: 2\.14 ms/);
+    assert.match(panel.content, /example\.test: NL/);
+    assert.doesNotMatch(panel.content, /Ignored separator/);
+    assertReportScriptsCompile(html);
+  });
+
+  await suite.test("reports with only statuses explain missing details and terminal data honestly", async (t) => {
+    const { env, id } = resultEnvironment(t);
+    saveReportContent(env, id, {
+      statuses: [["run_region", "Synthetic IP region", "выполнен"]],
+      terminal: "===== Synthetic IP region =====\n",
+    });
+    const html = await (await worker.fetch(new Request(origin + "/test/" + id + "?view=full"), env)).text();
+    const panels = reportPanels(html);
+    const full = panels.find((panel) => panel.attributes.get("data-result-view") === "full");
+    assert.doesNotMatch(full.content, /<details\b/);
+    assert.match(full.content, /Для этого теста сохранился только статус/);
+    const terminal = panels.find((panel) => panel.attributes.get("data-result-view") === "terminal");
+    assert.match(terminal.content, /Вывод тестов не сохранился/);
+    assert.doesNotMatch(terminal.content, /<pre\b/);
+    assertReportScriptsCompile(html);
+  });
+
+  await suite.test("saved raw terminal lines remain intact and escaped instead of being replaced by synthetic summaries", async (t) => {
+    const { env, id } = resultEnvironment(t);
+    const raw = "===== Synthetic CPU =====\nCPU events/sec: 1234.50 <steady>\nLatency p95: 2.14 ms\n";
+    saveReportContent(env, id, {
+      statuses: [["run_cpu", "Synthetic CPU", "выполнен"]],
+      metrics: [["run_cpu", "Parsed value differs", "999", "ok"]], terminal: raw,
+    });
+    const html = await (await worker.fetch(new Request(origin + "/test/" + id + "?view=terminal"), env)).text();
+    const panel = reportPanels(html).find((item) => !item.attributes.has("hidden"));
+    const pre = panel.content.match(/<pre\b[^>]*>([\s\S]*?)<\/pre>/);
+    assert.ok(pre);
+    assert.equal(pre[1], "===== Synthetic CPU =====\nCPU events/sec: 1234.50 &lt;steady&gt;\nLatency p95: 2.14 ms\n");
+    assert.doesNotMatch(panel.content, /Исходный вывод не сохранился|Parsed value differs|<steady>/);
+    assert.equal(env.DB.sqlite.prepare("SELECT content FROM result_terminal_reports WHERE result_id=?").get(id).content, raw);
+    assertReportScriptsCompile(html);
   });
 
   await suite.test("SVG-only reports prepare a bounded PNG download in the browser and report errors accessibly", async (t) => {
